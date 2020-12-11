@@ -1,0 +1,6 @@
+(library
+ (name ocaml_debug_agent)
+ (public_name ocaml_debug_agent)
+ (preprocess
+  (pps lwt_ppx))
+ (libraries compiler-libs.bytecomp lwt lwt.unix react lwt_react))
