@@ -6,6 +6,8 @@ type pc
 
 type breakpoint
 
+type status = Running | Entrypoint | Breakpoint | Uncaught_exc | Exited
+
 type conn = Types.conn = {in_: Lwt_io.input_channel; out: Lwt_io.output_channel}
 
 type remote_debugger_version = OCaml_400 | OCaml_410
@@ -13,11 +15,14 @@ type remote_debugger_version = OCaml_400 | OCaml_410
 type options =
   { remote_debugger_version: remote_debugger_version
   ; debug_connnection: conn
+  ; time_slice: int
   ; symbols_file: string }
 
 val start : options -> t Lwt.t
 
 val resolve : t -> src_pos -> (pc * src_pos) option Lwt.t
+
+val status_signal : t -> status React.S.t
 
 val symbols_change_event : t -> unit React.E.t
 
