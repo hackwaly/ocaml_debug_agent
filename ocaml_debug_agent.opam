@@ -1,0 +1,25 @@
+opam-version: "2.0"
+synopsis: "OCaml debug agent"
+description: """
+This library offers interface to work with remote debugger protocol inside ocamlrun.
+"""
+maintainer: "文宇祥 <hackwaly@qq.com>"
+authors: "文宇祥 <hackwaly@qq.com>"
+license: "MIT"
+homepage: "https://github.com/hackwaly/ocaml_debug_agent"
+bug-reports: "https://github.com/hackwaly/ocaml_debug_agent/issues"
+dev-repo: "git://git@github.com:hackwaly/ocaml_debug_agent.git"
+doc: "https://hackwaly.github.io/ocaml_debug_agent/"
+depends: [
+  "ocaml" {>= "4.08"}
+  "dune" {>= "2.7"}
+  "lwt"
+  "lwt_ppx"
+  "lwt_react"
+  "react"
+  "logs"
+]
+build: [
+  ["dune" "subst"] {pinned}
+  ["dune" "build" "-p" name "-j" jobs]
+]
