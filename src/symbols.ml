@@ -219,7 +219,7 @@ let resolve t src_pos =
     let ev_pos = pos_of_event ev in
     let pc = {frag= mi.frag; pos= ev.Instruct.ev_pos} in
     let src_pos' =
-      { source= mi.resolved_source |> Option.value ~default:"(none)"
+      { source= mi.resolved_source |> Option.value ~default:src_pos.source
       ; line= ev_pos.Lexing.pos_lnum
       ; column= ev_pos.Lexing.pos_cnum - ev_pos.Lexing.pos_bol }
     in
