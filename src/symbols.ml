@@ -3,18 +3,20 @@ open Types
 type module_info =
   { frag: int
   ; id: string
-  ; source_path: string
-  ; source_lines: string array
+  ; resolved_source: string option
   ; events: Instruct.debug_event array }
 
 type eventlist = {orig: int; evl: Instruct.debug_event list; dirs: string list}
 
 type t =
   { event_by_pc: (pc, Instruct.debug_event) Hashtbl.t
-  ; module_info_tbl: (string, module_info) Hashtbl.t
+  ; module_info_by_id: (string, module_info) Hashtbl.t
+  ; module_info_by_digest: (string, module_info) Hashtbl.t
   ; change_e: unit React.E.t
   ; emit_change: unit -> unit
-  ; derive_source_paths: string -> string list -> string list Lwt.t }
+  ; derive_source_paths: string -> string list -> string list Lwt.t
+  ; get_digest: string -> string Lwt.t
+  ; load_source: string -> (string * int array) Lwt.t }
 
 let default_derive_source_paths mid dirs =
   dirs |> List.to_seq
@@ -28,11 +30,35 @@ let default_derive_source_paths mid dirs =
 
 let make ?(derive_source_paths = default_derive_source_paths) () =
   let change_e, emit_change = React.E.create () in
+  let get_digest =
+    Lwt_util.memo ~weight:String.length ~cap:(64 * 1024) (fun _rec source ->
+        Lwt_preemptive.detach (fun source -> Digest.file source) source)
+  in
+  let load_source =
+    let weight (content, _bols) = String.length content in
+    Lwt_util.memo ~weight
+      ~cap:(32 * 1024 * 1024)
+      (fun _rec source ->
+        let%lwt lines = Lwt_io.lines_of_file source |> Lwt_stream.to_list in
+        let bols =
+          lines
+          |> List.fold_left
+               (fun bols line ->
+                 let prev_bol = match bols with x :: _ -> x | [] -> 0 in
+                 (prev_bol + String.length line) :: bols)
+               []
+          |> Array.of_list
+        in
+        Lwt.return (lines |> String.concat "", bols))
+  in
   { event_by_pc= Hashtbl.create 0
-  ; module_info_tbl= Hashtbl.create 0
+  ; module_info_by_id= Hashtbl.create 0
+  ; module_info_by_digest= Hashtbl.create 0
   ; change_e
   ; emit_change
-  ; derive_source_paths }
+  ; derive_source_paths
+  ; get_digest
+  ; load_source }
 
 let read_toc ic =
   let%lwt len = Lwt_io.length ic in
@@ -112,6 +138,10 @@ let pos_of_event ev =
   | _ ->
       ev.ev_loc.Location.loc_start
 
+let cnum_of_event ev = (pos_of_event ev).Lexing.pos_cnum
+
+let change_event t = t.change_e
+
 let load t frag path =
   let%lwt ic = Lwt_io.open_file ~mode:Lwt_io.input path in
   let%lwt toc = read_toc ic in
@@ -123,7 +153,7 @@ let load t frag path =
          |> Lwt_list.iter_s (fun evl ->
                 let id = (List.hd evl).Instruct.ev_module in
                 let%lwt source_paths = t.derive_source_paths id dirs in
-                let%lwt source_path =
+                let%lwt resolved_source =
                   try%lwt
                     let%lwt source_path =
                       source_paths |> Lwt_list.find_s Lwt_unix.file_exists
@@ -131,32 +161,67 @@ let load t frag path =
                     Lwt.return (Some source_path)
                   with Not_found -> Lwt.return None
                 in
-                let%lwt source_lines =
-                  match%lwt Lwt.return source_path with
-                  | Some source_path ->
-                      let%lwt source_ic =
-                        Lwt_io.open_file ~mode:Lwt_io.input source_path
-                      in
-                      let%lwt lines =
-                        source_ic |> Lwt_io.read_lines |> Lwt_stream.to_list
-                      in
-                      Lwt.return (Array.of_list lines)
-                  | None ->
-                      Lwt.return [||]
-                in
                 let events = evl |> Array.of_list in
-                Array.fast_sort (Compare.by pos_of_event) events ;
-                let module_info =
-                  { frag
-                  ; id
-                  ; source_path= source_path |> Option.value ~default:"(none)"
-                  ; source_lines
-                  ; events }
-                in
-                Hashtbl.replace t.module_info_tbl id module_info ;
+                Array.fast_sort (Compare.by cnum_of_event) events ;
+                let module_info = {frag; id; resolved_source; events} in
+                Hashtbl.replace t.module_info_by_id id module_info ;
+                ( match resolved_source with
+                | Some source ->
+                    let%lwt digest = t.get_digest source in
+                    Hashtbl.replace t.module_info_by_digest digest module_info ;
+                    Lwt.return ()
+                | None ->
+                    Lwt.return () ) ;%lwt
                 Lwt.return ()))
 
+let src_pos_to_cnum t src_pos =
+  let%lwt _, bols = t.load_source src_pos.source in
+  let bol = bols.(src_pos.line) in
+  Lwt.return (bol + src_pos.column)
+
+let find_module_info t src_pos =
+  let%lwt digest = t.get_digest src_pos.source in
+  Hashtbl.find t.module_info_by_digest digest |> Lwt.return
+
+let expand_to_equivalent_range code cnum =
+  let is_whitespace c =
+    match c with ' ' | '\t' | '\r' | '\n' -> true | _ -> false
+  in
+  let c = code.[cnum] in
+  if is_whitespace c then
+    let rec aux f n =
+      let n' = f n in
+      let c = code.[n'] in
+      if is_whitespace c then aux f n' else n
+    in
+    (aux (( - ) 1) cnum, aux (( + ) 1) cnum)
+  else (cnum, cnum)
+
+let find_event code events cnum =
+  let l, r = expand_to_equivalent_range code cnum in
+  assert (l <= r) ;
+  let cmp ev () =
+    let ev_cnum = cnum_of_event ev in
+    if ev_cnum < l then -1 else if ev_cnum > r then 1 else 0
+  in
+  match events |> Array_util.bsearch ~cmp () with
+  | `At i ->
+      events.(i)
+  | _ ->
+      raise Not_found
+
 let resolve t src_pos =
-  ignore t ;
-  ignore src_pos ;
-  assert false
+  try%lwt
+    let%lwt mi = find_module_info t src_pos in
+    let%lwt code, _ = t.load_source src_pos.source in
+    let%lwt cnum = src_pos_to_cnum t src_pos in
+    let ev = find_event code mi.events cnum in
+    let ev_pos = pos_of_event ev in
+    let pc = {frag= mi.frag; pos= ev.Instruct.ev_pos} in
+    let src_pos' =
+      { source= mi.resolved_source |> Option.value ~default:"(none)"
+      ; line= ev_pos.Lexing.pos_lnum
+      ; column= ev_pos.Lexing.pos_cnum - ev_pos.Lexing.pos_bol }
+    in
+    Lwt.return (Some (pc, src_pos'))
+  with Not_found -> Lwt.return None

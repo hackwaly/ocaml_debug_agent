@@ -96,7 +96,7 @@ let resolve agent src_pos = Symbols.resolve agent.symbols src_pos
 
 let status_signal agent = agent.status_s
 
-let symbols_change_event agent = agent.symbols.change_e
+let symbols_change_event agent = Symbols.change_event agent.symbols
 
 let make_breakpoint = Breakpoints.make_breakpoint
 

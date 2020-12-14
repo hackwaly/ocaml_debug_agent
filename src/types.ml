@@ -1,4 +1,4 @@
-type src_pos = {source: string; line: string; column: string}
+type src_pos = {source: string; line: int; column: int}
 
 type pc = {frag: int; pos: int}
 
