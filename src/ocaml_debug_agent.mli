@@ -22,15 +22,17 @@ val start : options -> t Lwt.t
 
 val resolve : t -> src_pos -> (pc * src_pos) option Lwt.t
 
+val sources : t -> string list Lwt.t
+
 val status_signal : t -> status React.S.t
 
 val symbols_change_event : t -> unit React.E.t
 
 val make_breakpoint : pc:pc -> unit -> breakpoint
 
-val set_breakpoint : t -> breakpoint -> unit
+val set_breakpoint : t -> breakpoint -> unit Lwt.t
 
-val remove_breakpoint : t -> breakpoint -> unit
+val remove_breakpoint : t -> breakpoint -> unit Lwt.t
 
 val terminate : t -> unit Lwt.t
 

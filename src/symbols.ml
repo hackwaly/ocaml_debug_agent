@@ -225,3 +225,8 @@ let resolve t src_pos =
     in
     Lwt.return (Some (pc, src_pos'))
   with Not_found -> Lwt.return None
+
+let sources t =
+  t.module_info_by_id |> Hashtbl.to_seq_values
+  |> Seq.filter_map (fun mi -> mi.resolved_source)
+  |> List.of_seq |> Lwt.return
