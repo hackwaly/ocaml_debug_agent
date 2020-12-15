@@ -54,7 +54,7 @@ let make ?(derive_source_paths = default_derive_source_paths) () =
           else if code.[i] = '\n' then bols := i :: !bols
           else ()
         done;
-        let bols = !bols |> Array.of_list in
+        let bols = !bols |> List.rev |> Array.of_list in
         Lwt.return (code, bols))
   in
   {
