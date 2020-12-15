@@ -227,7 +227,7 @@ let expand_to_equivalent_range code cnum =
     in
     let%lwt l = aux (fun x -> x - 1) cnum in
     let%lwt r = aux (fun x -> x + 1) cnum in
-    Lwt.return (l, r)
+    Lwt.return (l, r + 1)
   else Lwt.return (cnum, cnum)
 
 let find_event code events cnum =
