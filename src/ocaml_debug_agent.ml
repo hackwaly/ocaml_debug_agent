@@ -74,6 +74,7 @@ let start opts =
       Log.debug (fun m -> m "pull start");%lwt
       if%lwt Lwt.return (React.S.value pause_flag_s) then (
         Lwt_react.E.next wakeup_e;%lwt
+        Log.debug (fun m -> m "wakeup end");%lwt
         Lwt.pause ();
       );%lwt
       Log.debug (fun m -> m "pull end");%lwt
