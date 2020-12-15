@@ -43,7 +43,7 @@ let start opts =
   Symbols.load symbols 0 opts.symbols_file ;%lwt
   let wakeup_e, emit_wakeup = React.E.create () in
   let status_s, set_status = React.S.create Entrypoint in
-  let pause_flag_s, set_pause_flag = React.S.create false in
+  let pause_flag_s, set_pause_flag = React.S.create true in
   let loop () =
     let commit () = Breakpoints.commit breakpoints (module Rdbg) conn in
     let rec next () =
