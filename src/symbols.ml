@@ -208,7 +208,7 @@ let load t frag path =
 let src_pos_to_cnum t src_pos =
   let%lwt _, bols = t.load_source src_pos.source in
   Log.debug (fun m -> m "src_pos_to_cnum src_pos:%s bols:%s" (show_src_pos src_pos)  ([%show: int array] bols));%lwt
-  let bol = bols.(src_pos.line) in
+  let bol = bols.(src_pos.line - 1) in
   Lwt.return (bol + src_pos.column)
 
 let find_module_info t src_pos =
@@ -230,6 +230,8 @@ let expand_to_equivalent_range code cnum =
   else (cnum, cnum)
 
 let find_event code events cnum =
+  Log.debug (fun m ->
+      m "expand_to_equivalent_range code:%s cnum:%d " code cnum);%lwt
   let l, r = expand_to_equivalent_range code cnum in
   Log.debug (fun m ->
       m "expand_to_equivalent_range code:%s cnum:%d l:%d, r:%d" code cnum l r);%lwt
