@@ -7,6 +7,7 @@ type pc
 type breakpoint
 
 type status = Running | Entrypoint | Breakpoint | Uncaught_exc | Exited
+[@@deriving show]
 
 type conn = Types.conn = {in_: Lwt_io.input_channel; out: Lwt_io.output_channel}
 

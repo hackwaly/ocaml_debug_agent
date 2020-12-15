@@ -17,6 +17,7 @@ type pc = Types.pc
 type breakpoint = Breakpoints.breakpoint
 
 type status = Running | Entrypoint | Breakpoint | Uncaught_exc | Exited
+[@@deriving show]
 
 type t =
   { rdbg: (module REMOTE_DEBUGGER)
@@ -45,7 +46,9 @@ let start opts =
   let status_s, set_status = React.S.create Entrypoint in
   let pause_flag_s, set_pause_flag = React.S.create true in
   let loop () =
-    let commit () = Breakpoints.commit breakpoints (module Rdbg) conn in
+    let commit () =
+      Breakpoints.commit breakpoints (module Rdbg) conn;
+    in
     let rec next () =
       let%lwt report = Rdbg.go conn opts.time_slice in
       match report.rep_type with
@@ -58,7 +61,10 @@ let start opts =
     in
     let break = ref false in
     while%lwt not !break do
+      Log.debug (fun m -> m "commit start");%lwt
       commit () ;%lwt
+      Log.debug (fun m -> m "commit end");%lwt
+      Log.debug (fun m -> m "pull start");%lwt
       if%lwt Lwt.return (React.S.value pause_flag_s) then
         Lwt_react.E.next
           (Lwt_react.E.select
@@ -66,10 +72,13 @@ let start opts =
                |> React.E.fmap (fun pause ->
                       if not pause then Some () else None)
              ; wakeup_e ]) ;%lwt
+      Log.debug (fun m -> m "pull end");%lwt
       if%lwt Lwt.return (not (React.S.value pause_flag_s)) then (
         Lwt.pause () ;%lwt
         set_status Running ;
+        Log.debug (fun m -> m "next start");%lwt
         let%lwt report = next () in
+        Log.debug (fun m -> m "next end");%lwt
         set_pause_flag true ;
         match report.rep_type with
         | Exited ->
