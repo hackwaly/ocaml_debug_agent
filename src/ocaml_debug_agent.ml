@@ -14,7 +14,8 @@ type options = {
   symbols_file : string;
 }
 
-type src_pos = Types.src_pos
+type src_pos = Types.src_pos = { source : string; line : int; column : int }
+[@@deriving show]
 
 type pc = Types.pc
 

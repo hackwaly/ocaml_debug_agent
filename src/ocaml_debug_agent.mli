@@ -1,6 +1,7 @@
 type t
 
-type src_pos
+type src_pos = Types.src_pos = { source : string; line : int; column : int }
+[@@deriving show]
 
 type pc
 
