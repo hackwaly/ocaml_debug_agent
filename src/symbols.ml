@@ -224,6 +224,7 @@ let expand_to_equivalent_range code cnum =
     let rec aux f n =
       let n' = f n in
       let c = code.[n'] in
+      Format.printf "is_whitespace n:%d c:%c" n' c;
       if is_whitespace c then aux f n' else n
     in
     (aux (( - ) 1) cnum, aux (( + ) 1) cnum)
