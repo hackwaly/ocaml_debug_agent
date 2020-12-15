@@ -228,8 +228,8 @@ let expand_to_equivalent_range code cnum =
       let c = code.[n'] in
       if is_whitespace c then aux f n' else Lwt.return n
     in
-    let%lwt l = aux (( - ) 1) cnum in
-    let%lwt r = aux (( + ) 1) cnum in
+    let%lwt l = aux (fun x -> x - 1) cnum in
+    let%lwt r = aux (fun x -> x + 1) cnum in
     Lwt.return (l, r)
   else Lwt.return (cnum, cnum)
 
