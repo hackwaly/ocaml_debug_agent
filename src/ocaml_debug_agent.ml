@@ -39,12 +39,13 @@ let start opts =
   let (module Rdbg) = rdbg in
   let conn = opts.debug_connnection in
   let symbols = Symbols.make () in
+  let breakpoints = Breakpoints.make () in
   Symbols.load symbols 0 opts.symbols_file ;%lwt
   let wakeup_e, emit_wakeup = React.E.create () in
   let status_s, set_status = React.S.create Entrypoint in
   let pause_flag_s, set_pause_flag = React.S.create false in
   let loop () =
-    let flush () = Lwt.return () in
+    let commit () = Breakpoints.commit breakpoints (module Rdbg) conn in
     let rec next () =
       let%lwt report = Rdbg.go conn opts.time_slice in
       match report.rep_type with
@@ -57,7 +58,7 @@ let start opts =
     in
     let break = ref false in
     while%lwt not !break do
-      flush () ;%lwt
+      commit () ;%lwt
       if%lwt Lwt.return (React.S.value pause_flag_s) then
         Lwt_react.E.next
           (Lwt_react.E.select
@@ -88,7 +89,7 @@ let start opts =
     ; symbols
     ; loop_promise
     ; emit_wakeup
-    ; breakpoints= Breakpoints.make ()
+    ; breakpoints
     ; set_pause_flag
     ; status_s }
 

@@ -1,3 +1,4 @@
+(* Copied an modified from ocaml-containers CCArray.ml *)
 let bsearch ~cmp k a =
   let rec aux i j =
     if i > j
