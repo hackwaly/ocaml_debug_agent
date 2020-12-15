@@ -49,10 +49,9 @@ let make ?(derive_source_paths = default_derive_source_paths) () =
         let%lwt code = Lwt_io.read ic in
         let bols = ref [ 0 ] in
         for i = 0 to String.length code - 1 do
-          if code.[i] = '\n' && i >= 1 && code.[i - 1] = '\r' then
-            bols := (i - 1) :: !bols
-          else if code.[i] = '\n' then bols := i :: !bols
-          else ()
+          if code.[i] = '\n' then (
+            bols := (i + 1) :: !bols
+          )
         done;
         let bols = !bols |> List.rev |> Array.of_list in
         Lwt.return (code, bols))
