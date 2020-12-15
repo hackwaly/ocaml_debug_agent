@@ -3,7 +3,7 @@ type t
 type src_pos = Types.src_pos = { source : string; line : int; column : int }
 [@@deriving show]
 
-type pc
+type pc = Types.pc
 
 module Breakpoint = Breakpoint
 
