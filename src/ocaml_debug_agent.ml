@@ -72,15 +72,10 @@ let start opts =
       commit ();%lwt
       Log.debug (fun m -> m "commit end");%lwt
       Log.debug (fun m -> m "pull start");%lwt
-      if%lwt Lwt.return (React.S.value pause_flag_s) then
-        Lwt_react.E.next
-          (Lwt_react.E.select
-             [
-               pause_flag_s |> React.S.changes
-               |> React.E.fmap (fun pause ->
-                      if not pause then Some () else None);
-               wakeup_e;
-             ]);%lwt
+      if%lwt Lwt.return (React.S.value pause_flag_s) then (
+        Lwt_react.E.next wakeup_e;%lwt
+        Lwt.pause ();
+      );%lwt
       Log.debug (fun m -> m "pull end");%lwt
       if%lwt Lwt.return (not (React.S.value pause_flag_s)) then (
         Lwt.pause ();%lwt
