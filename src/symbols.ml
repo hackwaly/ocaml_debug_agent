@@ -45,19 +45,17 @@ let make ?(derive_source_paths = default_derive_source_paths) () =
     Lwt_util.memo ~weight
       ~cap:(32 * 1024 * 1024)
       (fun _rec source ->
-        let%lwt lines = Lwt_io.lines_of_file source |> Lwt_stream.to_list in
-        let bols =
-          0
-          :: ( lines
-             |> List.fold_left
-                  (fun bols line ->
-                    let prev_bol = match bols with x :: _ -> x | [] -> 0 in
-                    (prev_bol + String.length line) :: bols)
-                  []
-             |> List.rev )
-          |> Array.of_list
-        in
-        Lwt.return (lines |> String.concat "", bols))
+        let%lwt ic = Lwt_io.open_file ~mode:Lwt_io.input source in
+        let%lwt code = Lwt_io.read ic in
+        let bols = ref [ 0 ] in
+        for i = 0 to String.length code - 1 do
+          if code.[i] = '\n' && i >= 1 && code.[i - 1] = '\r' then
+            bols := (i - 1) :: !bols
+          else if code.[i] = '\n' then bols := i :: !bols
+          else ()
+        done;
+        let bols = !bols |> Array.of_list in
+        Lwt.return (code, bols))
   in
   {
     event_by_pc = Hashtbl.create 0;
