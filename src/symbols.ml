@@ -230,7 +230,7 @@ let expand_to_equivalent_range code cnum =
   else (cnum, cnum)
 
 let find_event code events cnum =
-  Log.debug (fun m -> m "expand_to_equivalent_range code:%s cnum:%d " code cnum);%lwt
+  Log.debug (fun m -> m "expand_to_equivalent_range code:%s cnum:%d len:%d" code cnum (String.length code));%lwt
   let l, r = expand_to_equivalent_range code cnum in
   Log.debug (fun m ->
       m "expand_to_equivalent_range code:%s cnum:%d l:%d, r:%d" code cnum l r);%lwt
