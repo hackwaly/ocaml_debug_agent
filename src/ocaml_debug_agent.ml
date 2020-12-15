@@ -70,6 +70,7 @@ let start opts =
         Lwt.pause () ;%lwt
         set_status Running ;
         let%lwt report = next () in
+        set_pause_flag true ;
         match report.rep_type with
         | Exited ->
             Lwt.pause () ;%lwt
@@ -77,9 +78,6 @@ let start opts =
             break := true ;
             Lwt.return ()
         | Breakpoint | Uncaught_exc ->
-            Lwt.pause () ;%lwt
-            set_status Breakpoint ;
-            set_pause_flag true ;
             Lwt.pause () ;%lwt
             set_status
               ( match report.rep_type with
