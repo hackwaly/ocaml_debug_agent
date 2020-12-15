@@ -218,7 +218,8 @@ let expand_to_equivalent_range code cnum =
   let is_whitespace c =
     match c with ' ' | '\t' | '\r' | '\n' -> true | _ -> false
   in
-  assert (cnum >= 0 && cnum >= String.length code);
+  Log.debug (fun m -> m "cnum:%d, len:%d" cnum (String.length code));%lwt
+  assert (cnum >= 0 && cnum < String.length code);
   let c = code.[cnum] in
   if is_whitespace c then
     let rec aux f n =
@@ -226,12 +227,12 @@ let expand_to_equivalent_range code cnum =
       let c = code.[n'] in
       if is_whitespace c then aux f n' else n
     in
-    (aux (( - ) 1) cnum, aux (( + ) 1) cnum)
-  else (cnum, cnum)
+    Lwt.return (aux (( - ) 1) cnum, aux (( + ) 1) cnum)
+  else Lwt.return (cnum, cnum)
 
 let find_event code events cnum =
   Log.debug (fun m -> m "expand_to_equivalent_range code:%s cnum:%d len:%d" code cnum (String.length code));%lwt
-  let l, r = expand_to_equivalent_range code cnum in
+  let%lwt l, r = expand_to_equivalent_range code cnum in
   Log.debug (fun m ->
       m "expand_to_equivalent_range code:%s cnum:%d l:%d, r:%d" code cnum l r);%lwt
   assert (l <= r);
