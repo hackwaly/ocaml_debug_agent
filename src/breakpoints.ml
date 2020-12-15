@@ -35,6 +35,7 @@ let commit t (module Rdbg : REMOTE_DEBUGGER) conn =
   let commit_one pc =
     let removed = not (Hashtbl.mem t.breakpoint_by_pc pc) in
     let committed = Hashtbl.mem t.committed pc in
+    Log.debug (fun m -> m "pc: (%d,%d), removed: %b, committed: %b" pc.frag pc.pos removed committed);%lwt
     match (removed, committed) with
     | true, true ->
         Rdbg.reset_instr conn pc;%lwt
