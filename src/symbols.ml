@@ -181,7 +181,11 @@ let load t frag path =
                 |> List.iter (fun ev ->
                        let pc = {frag; pos= ev.Instruct.ev_pos} in
                        Hashtbl.replace t.event_by_pc pc ev ;
-                       Hashtbl.replace t.commit_queue pc ()) ;
+                       match ev.ev_kind with
+                       | Event_pseudo ->
+                           Hashtbl.replace t.commit_queue pc ()
+                       | _ ->
+                           ()) ;
                 let events = evl |> Array.of_list in
                 Array.fast_sort (Compare.by cnum_of_event) events ;
                 let module_info = {frag; id; resolved_source; events} in
