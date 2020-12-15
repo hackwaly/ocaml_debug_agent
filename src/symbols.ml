@@ -204,7 +204,7 @@ let load t frag path =
 
 let src_pos_to_cnum t src_pos =
   let%lwt _, bols = t.load_source src_pos.source in
-  let bol = bols.(src_pos.line) in
+  let bol = bols.(src_pos.line - 1) in
   Lwt.return (bol + src_pos.column)
 
 let find_module_info t src_pos =
