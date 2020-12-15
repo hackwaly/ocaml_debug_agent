@@ -51,11 +51,11 @@ let start opts =
     in
     let rec next () =
       let%lwt report = Rdbg.go conn opts.time_slice in
+      Log.debug (fun m -> m "next 1 %s" (show_report report));%lwt
       match report.rep_type with
       | Exited | Breakpoint | Uncaught_exc ->
           Lwt.return report
       | Event ->
-          Log.debug (fun m -> m "next event");%lwt
           if React.S.value pause_flag_s then Lwt.return report else next ()
       | _ ->
           next ()

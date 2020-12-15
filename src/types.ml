@@ -1,10 +1,17 @@
 type src_pos = {source: string; line: int; column: int}
+[@@deriving show]
 
 type pc = {frag: int; pos: int}
+[@@deriving show]
 
 type conn = {in_: Lwt_io.input_channel; out: Lwt_io.output_channel}
 
 type fork_mode = Fork_child | Fork_parent
+[@@deriving show]
+
+type debug_info = {eventlists: Instruct.debug_event list array}
+
+let pp_debug_info fmt _ = Format.pp_print_string fmt "<debug info>"
 
 type execution_summary =
   | Event
@@ -12,15 +19,17 @@ type execution_summary =
   | Exited
   | Trap
   | Uncaught_exc
-  | Code_debug_info of Instruct.debug_event list array
+  | Code_debug_info of debug_info
   | Code_loaded of int
   | Code_unloaded of int
+[@@deriving show]
 
 type report =
   { rep_type: execution_summary
   ; rep_event_count: int64
   ; rep_stack_pointer: int
   ; rep_program_pointer: pc }
+[@@deriving show]
 
 type checkpoint_report = Checkpoint_done of int | Checkpoint_failed
 

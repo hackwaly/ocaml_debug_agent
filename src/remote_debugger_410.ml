@@ -42,8 +42,8 @@ let go conn n =
     | 'u' ->
         Lwt.return Uncaught_exc
     | 'D' ->
-        let%lwt debug_info = Lwt_io.read_value conn.in_ in
-        Lwt.return (Code_debug_info debug_info)
+        let%lwt eventlists = Lwt_io.read_value conn.in_ in
+        Lwt.return (Code_debug_info {eventlists})
     | 'L' ->
         let%lwt frag = Lwt_io.BE.read_int conn.in_ in
         Lwt.return (Code_loaded frag)
