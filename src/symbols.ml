@@ -212,18 +212,19 @@ let find_module_info t src_pos =
   Hashtbl.find t.module_info_by_digest digest |> Lwt.return
 
 let expand_to_equivalent_range code cnum =
-  let is_whitespace c =
-    match c with ' ' | '\t' | '\r' | '\n' -> true | _ -> false
+  (* TODO: Support skip comments *)
+  let is_whitespace_or_semicolon c =
+    match c with ' ' | '\t' | '\r' | '\n' | ';' -> true | _ -> false
   in
   Log.debug (fun m -> m "cnum:%d, len:%d" cnum (String.length code));%lwt
   assert (cnum >= 0 && cnum < String.length code);
   let c = code.[cnum] in
-  if is_whitespace c then
+  if is_whitespace_or_semicolon c then
     let rec aux f n =
       let n' = f n in
       Log.debug (fun m -> m "expand_to_equivalent_range.aux n:%d" n');%lwt
       let c = code.[n'] in
-      if is_whitespace c then aux f n' else Lwt.return n
+      if is_whitespace_or_semicolon c then aux f n' else Lwt.return n
     in
     let%lwt l = aux (fun x -> x - 1) cnum in
     let%lwt r = aux (fun x -> x + 1) cnum in
