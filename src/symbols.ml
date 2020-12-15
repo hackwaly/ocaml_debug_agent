@@ -6,7 +6,7 @@ type module_info =
   ; resolved_source: string option
   ; events: Instruct.debug_event array }
 
-type eventlist = {orig: int; evl: Instruct.debug_event list; dirs: string list}
+type eventlist = {evl: Instruct.debug_event list; dirs: string list}
 
 type t =
   { event_by_pc: (pc, Instruct.debug_event) Hashtbl.t
@@ -140,7 +140,7 @@ let read_eventlists toc ic =
     List.iter (relocate_event orig) evl ;
     let%lwt dirs = Lwt_io.read_value ic in
     let dirs = (dirs : string list) in
-    eventlists := {orig; evl; dirs} :: !eventlists ;
+    eventlists := {evl; dirs} :: !eventlists ;
     Lwt.return ()
   done ;%lwt
   Lwt.return (List.rev !eventlists)
@@ -163,8 +163,7 @@ let load t frag path =
   (let%lwt toc = read_toc ic in
    let%lwt eventlists = read_eventlists toc ic in
    eventlists
-   |> Lwt_list.iter_s (fun {orig; evl; dirs} ->
-          List.iter (relocate_event orig) evl ;
+   |> Lwt_list.iter_s (fun {evl; dirs} ->
           partition_modules evl
           |> Lwt_list.iter_s (fun evl ->
                  let id = (List.hd evl).Instruct.ev_module in
