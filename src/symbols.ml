@@ -192,7 +192,6 @@ let load t frag path =
                          Hashtbl.replace t.commit_queue pc ()) ;
                 let events =
                   evl
-                  |> List.filter (fun ev -> not (is_pseudo_event ev))
                   |> Array.of_list
                 in
                 Array.fast_sort (Compare.by cnum_of_event) events ;
