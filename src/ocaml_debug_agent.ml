@@ -67,17 +67,19 @@ let start opts =
                       if not pause then Some () else None)
              ; wakeup_e ]) ;%lwt
       if%lwt Lwt.return (not (React.S.value pause_flag_s)) then (
+        Lwt.pause () ;%lwt
         set_status Running ;
         let%lwt report = next () in
         match report.rep_type with
         | Exited ->
+            Lwt.pause () ;%lwt
             set_status Exited ;
             break := true ;
             Lwt.return ()
         | Breakpoint ->
-            set_status Breakpoint ; Lwt.return ()
+            Lwt.pause () ;%lwt set_status Breakpoint ; Lwt.return ()
         | Uncaught_exc ->
-            set_status Uncaught_exc ; Lwt.return ()
+            Lwt.pause () ;%lwt set_status Uncaught_exc ; Lwt.return ()
         | _ ->
             [%lwt assert false] )
     done
@@ -105,6 +107,7 @@ let make_breakpoint = Breakpoints.make_breakpoint
 
 let set_breakpoint agent bp =
   Breakpoints.set_breakpoint agent.breakpoints bp ;
+  agent.emit_wakeup () ;
   Lwt.return ()
 
 let remove_breakpoint agent bp =
@@ -115,9 +118,13 @@ let terminate agent =
   Lwt.cancel agent.loop_promise ;
   Lwt.return ()
 
-let continue agent = agent.set_pause_flag false ; Lwt.return ()
+let continue agent =
+  Lwt.pause () ;%lwt
+  agent.set_pause_flag false ;
+  agent.emit_wakeup () ;
+  Lwt.return ()
 
-let pause agent = agent.set_pause_flag true ; Lwt.return ()
+let pause agent = Lwt.pause () ;%lwt agent.set_pause_flag true ; Lwt.return ()
 
 let next agent = ignore agent ; Lwt.return ()
 
