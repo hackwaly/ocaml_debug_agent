@@ -76,10 +76,20 @@ let start opts =
             set_status Exited ;
             break := true ;
             Lwt.return ()
-        | Breakpoint ->
-            Lwt.pause () ;%lwt set_status Breakpoint ; Lwt.return ()
-        | Uncaught_exc ->
-            Lwt.pause () ;%lwt set_status Uncaught_exc ; Lwt.return ()
+        | Breakpoint | Uncaught_exc ->
+            Lwt.pause () ;%lwt
+            set_status Breakpoint ;
+            set_pause_flag true ;
+            Lwt.pause () ;%lwt
+            set_status
+              ( match report.rep_type with
+              | Breakpoint ->
+                  Breakpoint
+              | Uncaught_exc ->
+                  Uncaught_exc
+              | _ ->
+                  assert false ) ;
+            Lwt.return ()
         | _ ->
             [%lwt assert false] )
     done
