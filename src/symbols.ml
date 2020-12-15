@@ -228,7 +228,7 @@ let expand_to_equivalent_range code cnum =
 
 let find_event code events cnum =
   let l, r = expand_to_equivalent_range code cnum in
-  Log.debug (fun m -> m "expand_to_equivalent_range l:%d, r:%d" l r);%lwt
+  Log.debug (fun m -> m "expand_to_equivalent_range code:%s cnum:%d l:%d, r:%d" code cnum l r);%lwt
   assert (l <= r);
   let cmp ev () =
     let ev_cnum = cnum_of_event ev in
