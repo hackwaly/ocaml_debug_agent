@@ -207,7 +207,7 @@ let load t frag path =
 
 let src_pos_to_cnum t src_pos =
   let%lwt _, bols = t.load_source src_pos.source in
-  Log.debug (fun m -> m "src_pos_to_cnum bols:%s" ([%show: int array] bols));%lwt
+  Log.debug (fun m -> m "src_pos_to_cnum src_pos:%s bols:%s" (show_src_pos src_pos)  ([%show: int array] bols));%lwt
   let bol = bols.(src_pos.line) in
   Lwt.return (bol + src_pos.column)
 
