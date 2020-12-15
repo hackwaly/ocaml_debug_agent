@@ -224,6 +224,7 @@ let expand_to_equivalent_range code cnum =
   if is_whitespace c then
     let rec aux f n =
       let n' = f n in
+      assert (n' >= 0 && n' < String.length code);
       let c = code.[n'] in
       if is_whitespace c then aux f n' else n
     in
