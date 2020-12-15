@@ -27,6 +27,7 @@ let checkpoint conn =
   Lwt.return (if pid = -1 then Checkpoint_failed else Checkpoint_done pid)
 
 let go conn n =
+  Log.debug (fun m -> m "go %d" n);%lwt
   Lwt_io.write_char conn.out 'g' ;%lwt
   Lwt_io.BE.write_int conn.out n ;%lwt
   let%lwt summary =
@@ -54,9 +55,13 @@ let go conn n =
         [%lwt assert false]
   in
   let%lwt event_counter = Lwt_io.BE.read_int conn.in_ in
+  Log.debug (fun m -> m "event_counter %d" event_counter);%lwt
   let%lwt stack_pos = Lwt_io.BE.read_int conn.in_ in
+  Log.debug (fun m -> m "stack_pos %d" stack_pos);%lwt
   let%lwt frag = Lwt_io.BE.read_int conn.in_ in
+  Log.debug (fun m -> m "frag %d" frag);%lwt
   let%lwt pos = Lwt_io.BE.read_int conn.in_ in
+  Log.debug (fun m -> m "pos %d" pos);%lwt
   Lwt.return
     { rep_type= summary
     ; rep_event_count= Int64.of_int event_counter
