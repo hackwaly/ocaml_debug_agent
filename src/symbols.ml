@@ -53,8 +53,9 @@ let make ?(derive_source_paths = default_derive_source_paths) () =
                   (fun bols line ->
                     let prev_bol = match bols with x :: _ -> x | [] -> 0 in
                     (prev_bol + String.length line) :: bols)
-                  [] )
-          |> List.rev |> Array.of_list
+                  []
+             |> List.rev )
+          |> Array.of_list
         in
         Lwt.return (lines |> String.concat "", bols))
   in
