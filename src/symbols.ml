@@ -177,17 +177,22 @@ let load t frag path =
                     Lwt.return (Some source_path)
                   with Not_found -> Lwt.return None
                 in
-                evl
-                |> List.iter (fun ev ->
+                let is_not_pseduo_event ev =
+                  match ev.Instruct.ev_kind with
+                  | Event_pseudo ->
+                      false
+                  | _ ->
+                      true
+                in
+                let events =
+                  evl |> List.filter is_not_pseduo_event |> Array.of_list
+                in
+                Array.fast_sort (Compare.by cnum_of_event) events ;
+                events
+                |> Array.iter (fun ev ->
                        let pc = {frag; pos= ev.Instruct.ev_pos} in
                        Hashtbl.replace t.event_by_pc pc ev ;
-                       match ev.ev_kind with
-                       | Event_pseudo ->
-                           Hashtbl.replace t.commit_queue pc ()
-                       | _ ->
-                           ()) ;
-                let events = evl |> Array.of_list in
-                Array.fast_sort (Compare.by cnum_of_event) events ;
+                       Hashtbl.replace t.commit_queue pc ()) ;
                 let module_info = {frag; id; resolved_source; events} in
                 Hashtbl.replace t.module_info_by_id id module_info ;
                 ( match resolved_source with
