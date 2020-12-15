@@ -47,13 +47,14 @@ let make ?(derive_source_paths = default_derive_source_paths) () =
       (fun _rec source ->
         let%lwt lines = Lwt_io.lines_of_file source |> Lwt_stream.to_list in
         let bols =
-          lines
-          |> List.fold_left
-               (fun bols line ->
-                 let prev_bol = match bols with x :: _ -> x | [] -> 0 in
-                 (prev_bol + String.length line) :: bols)
-               []
-          |> Array.of_list
+          0
+          :: ( lines
+             |> List.fold_left
+                  (fun bols line ->
+                    let prev_bol = match bols with x :: _ -> x | [] -> 0 in
+                    (prev_bol + String.length line) :: bols)
+                  [] )
+          |> List.rev |> Array.of_list
         in
         Lwt.return (lines |> String.concat "", bols))
   in
@@ -229,7 +230,8 @@ let expand_to_equivalent_range code cnum =
 
 let find_event code events cnum =
   let l, r = expand_to_equivalent_range code cnum in
-  Log.debug (fun m -> m "expand_to_equivalent_range code:%s cnum:%d l:%d, r:%d" code cnum l r);%lwt
+  Log.debug (fun m ->
+      m "expand_to_equivalent_range code:%s cnum:%d l:%d, r:%d" code cnum l r);%lwt
   assert (l <= r);
   let cmp ev () =
     let ev_cnum = cnum_of_event ev in
