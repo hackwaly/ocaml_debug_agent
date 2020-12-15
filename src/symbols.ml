@@ -10,6 +10,8 @@ type eventlist = {orig: int; evl: Instruct.debug_event list; dirs: string list}
 
 type t =
   { event_by_pc: (pc, Instruct.debug_event) Hashtbl.t
+  ; commit_queue: (pc, unit) Hashtbl.t
+  ; committed: (pc, unit) Hashtbl.t
   ; module_info_by_id: (string, module_info) Hashtbl.t
   ; module_info_by_digest: (string, module_info) Hashtbl.t
   ; change_e: unit React.E.t
@@ -52,6 +54,8 @@ let make ?(derive_source_paths = default_derive_source_paths) () =
         Lwt.return (lines |> String.concat "", bols))
   in
   { event_by_pc= Hashtbl.create 0
+  ; commit_queue= Hashtbl.create 0
+  ; committed= Hashtbl.create 0
   ; module_info_by_id= Hashtbl.create 0
   ; module_info_by_digest= Hashtbl.create 0
   ; change_e
@@ -59,6 +63,18 @@ let make ?(derive_source_paths = default_derive_source_paths) () =
   ; derive_source_paths
   ; get_digest
   ; load_source }
+
+let commit t (module Rdbg : REMOTE_DEBUGGER) conn =
+  let commit_one pc =
+    let committed = Hashtbl.mem t.committed pc in
+    if%lwt Lwt.return (not committed) then (
+      Hashtbl.replace t.committed pc () ;
+      Rdbg.set_event conn pc )
+  in
+  t.commit_queue |> Hashtbl.to_seq_keys |> List.of_seq
+  |> Lwt_list.iter_s commit_one ;%lwt
+  Hashtbl.reset t.commit_queue ;
+  Lwt.return ()
 
 let read_toc ic =
   let%lwt len = Lwt_io.length ic in
@@ -161,6 +177,11 @@ let load t frag path =
                     Lwt.return (Some source_path)
                   with Not_found -> Lwt.return None
                 in
+                evl
+                |> List.iter (fun ev ->
+                       Hashtbl.replace t.event_by_pc
+                         {frag; pos= ev.Instruct.ev_pos}
+                         ev) ;
                 let events = evl |> Array.of_list in
                 Array.fast_sort (Compare.by cnum_of_event) events ;
                 let module_info = {frag; id; resolved_source; events} in

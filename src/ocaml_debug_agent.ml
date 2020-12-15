@@ -47,6 +47,7 @@ let start opts =
   let pause_flag_s, set_pause_flag = React.S.create true in
   let loop () =
     let commit () =
+      Symbols.commit symbols (module Rdbg) conn; %lwt
       Breakpoints.commit breakpoints (module Rdbg) conn;
     in
     let rec next () =
