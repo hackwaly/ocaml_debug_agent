@@ -143,7 +143,7 @@ let read_eventlists toc ic =
     eventlists := {orig; evl; dirs} :: !eventlists ;
     Lwt.return ()
   done ;%lwt
-  Lwt.return !eventlists
+  Lwt.return (List.rev !eventlists)
 
 let pos_of_event ev =
   match ev.Instruct.ev_kind with
@@ -160,51 +160,52 @@ let change_event t = t.change_e
 
 let load t frag path =
   let%lwt ic = Lwt_io.open_file ~mode:Lwt_io.input path in
-  let%lwt toc = read_toc ic in
-  let%lwt eventlists = read_eventlists toc ic in
-  eventlists
-  |> Lwt_list.iter_s (fun {orig; evl; dirs} ->
-         List.iter (relocate_event orig) evl ;
-         partition_modules evl
-         |> Lwt_list.iter_s (fun evl ->
-                let id = (List.hd evl).Instruct.ev_module in
-                let%lwt source_paths = t.derive_source_paths id dirs in
-                let%lwt resolved_source =
-                  try%lwt
-                    let%lwt source_path =
-                      source_paths |> Lwt_list.find_s Lwt_unix.file_exists
-                    in
-                    Lwt.return (Some source_path)
-                  with Not_found -> Lwt.return None
-                in
-                let is_pseudo_event ev =
-                  match ev.Instruct.ev_kind with
-                  | Event_pseudo ->
-                      true
-                  | _ ->
-                      false
-                in
-                evl
-                |> List.iter (fun ev ->
-                       let pc = {frag; pos= ev.Instruct.ev_pos} in
-                       Hashtbl.replace t.event_by_pc pc ev ;
-                       Hashtbl.replace t.commit_queue pc ()) ;
-                let events =
-                  evl
-                  |> List.filter (fun ev -> not (is_pseudo_event ev))
-                  |> Array.of_list
-                in
-                Array.fast_sort (Compare.by cnum_of_event) events ;
-                let module_info = {frag; id; resolved_source; events} in
-                Hashtbl.replace t.module_info_by_id id module_info ;
-                ( match resolved_source with
-                | Some source ->
-                    let%lwt digest = t.get_digest source in
-                    Hashtbl.replace t.module_info_by_digest digest module_info ;
-                    Lwt.return ()
-                | None ->
-                    Lwt.return () ) ;%lwt
-                Lwt.return ()))
+  (let%lwt toc = read_toc ic in
+   let%lwt eventlists = read_eventlists toc ic in
+   eventlists
+   |> Lwt_list.iter_s (fun {orig; evl; dirs} ->
+          List.iter (relocate_event orig) evl ;
+          partition_modules evl
+          |> Lwt_list.iter_s (fun evl ->
+                 let id = (List.hd evl).Instruct.ev_module in
+                 let%lwt source_paths = t.derive_source_paths id dirs in
+                 let%lwt resolved_source =
+                   try%lwt
+                     let%lwt source_path =
+                       source_paths |> Lwt_list.find_s Lwt_unix.file_exists
+                     in
+                     Lwt.return (Some source_path)
+                   with Not_found -> Lwt.return None
+                 in
+                 let is_pseudo_event ev =
+                   match ev.Instruct.ev_kind with
+                   | Event_pseudo ->
+                       true
+                   | _ ->
+                       false
+                 in
+                 evl
+                 |> List.iter (fun ev ->
+                        let pc = {frag; pos= ev.Instruct.ev_pos} in
+                        Hashtbl.replace t.event_by_pc pc ev ;
+                        Hashtbl.replace t.commit_queue pc ()) ;
+                 let events =
+                   evl
+                   |> List.filter (fun ev -> not (is_pseudo_event ev))
+                   |> Array.of_list
+                 in
+                 Array.fast_sort (Compare.by cnum_of_event) events ;
+                 let module_info = {frag; id; resolved_source; events} in
+                 Hashtbl.replace t.module_info_by_id id module_info ;
+                 ( match resolved_source with
+                 | Some source ->
+                     let%lwt digest = t.get_digest source in
+                     Hashtbl.replace t.module_info_by_digest digest module_info ;
+                     Lwt.return ()
+                 | None ->
+                     Lwt.return () ) ;%lwt
+                 Lwt.return ())))
+    [%finally Lwt_io.close ic]
 
 let src_pos_to_cnum t src_pos =
   let%lwt _, bols = t.load_source src_pos.source in
