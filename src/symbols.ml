@@ -207,7 +207,6 @@ let load t frag path =
 
 let src_pos_to_cnum t src_pos =
   let%lwt _, bols = t.load_source src_pos.source in
-  Log.debug (fun m -> m "src_pos_to_cnum src_pos:%s bols:%s" (show_src_pos src_pos)  ([%show: int array] bols));%lwt
   let bol = bols.(src_pos.line - 1) in
   Lwt.return (bol + src_pos.column)
 
@@ -219,22 +218,19 @@ let expand_to_equivalent_range code cnum =
   let is_whitespace c =
     match c with ' ' | '\t' | '\r' | '\n' -> true | _ -> false
   in
-  Format.printf "expand_to_equivalent_range 1";
+  assert (cnum >= 0 && cnum >= String.length code);
   let c = code.[cnum] in
-  Format.printf "expand_to_equivalent_range 2";
   if is_whitespace c then
     let rec aux f n =
       let n' = f n in
       let c = code.[n'] in
-      Format.printf "is_whitespace n:%d c:%c" n' c;
       if is_whitespace c then aux f n' else n
     in
     (aux (( - ) 1) cnum, aux (( + ) 1) cnum)
   else (cnum, cnum)
 
 let find_event code events cnum =
-  Log.debug (fun m ->
-      m "expand_to_equivalent_range code:%s cnum:%d " code cnum);%lwt
+  Log.debug (fun m -> m "expand_to_equivalent_range code:%s cnum:%d " code cnum);%lwt
   let l, r = expand_to_equivalent_range code cnum in
   Log.debug (fun m ->
       m "expand_to_equivalent_range code:%s cnum:%d l:%d, r:%d" code cnum l r);%lwt
