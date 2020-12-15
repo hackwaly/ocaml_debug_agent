@@ -228,14 +228,16 @@ let expand_to_equivalent_range code cnum =
 
 let find_event code events cnum =
   let l, r = expand_to_equivalent_range code cnum in
+  Log.debug (fun m -> m "expand_to_equivalent_range l:%d, r:%d" l r);%lwt
   assert (l <= r);
   let cmp ev () =
     let ev_cnum = cnum_of_event ev in
     if ev_cnum < l then -1 else if ev_cnum > r then 1 else 0
   in
-  match events |> Array_util.bsearch ~cmp () with
-  | `At i -> events.(i)
-  | _ -> raise Not_found
+  Lwt.return
+    ( match events |> Array_util.bsearch ~cmp () with
+    | `At i -> events.(i)
+    | _ -> raise Not_found )
 
 let resolve t src_pos =
   try%lwt
