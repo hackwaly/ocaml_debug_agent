@@ -125,6 +125,7 @@ let sources agent = Symbols.sources agent.symbols
 
 let set_breakpoint agent bp =
   Breakpoints.set_breakpoint agent.breakpoints bp;%lwt
+  Lwt.pause ();%lwt
   agent.emit_wakeup ();
   Lwt.return ()
 
