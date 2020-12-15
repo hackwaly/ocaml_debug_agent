@@ -188,10 +188,10 @@ let load t frag path =
                 |> List.iter (fun ev ->
                        let pc = {frag; pos= ev.Instruct.ev_pos} in
                        Hashtbl.replace t.event_by_pc pc ev ;
-                       if not (is_pseudo_event ev) then
-                         Hashtbl.replace t.commit_queue pc ()) ;
+                       Hashtbl.replace t.commit_queue pc ()) ;
                 let events =
                   evl
+                  |> List.filter (fun ev -> not (is_pseudo_event ev))
                   |> Array.of_list
                 in
                 Array.fast_sort (Compare.by cnum_of_event) events ;
