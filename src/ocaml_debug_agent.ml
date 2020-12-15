@@ -55,6 +55,7 @@ let start opts =
       | Exited | Breakpoint | Uncaught_exc ->
           Lwt.return report
       | Event ->
+          Log.debug (fun m -> m "next event");%lwt
           if React.S.value pause_flag_s then Lwt.return report else next ()
       | _ ->
           next ()
