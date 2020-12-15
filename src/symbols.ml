@@ -232,6 +232,8 @@ let expand_to_equivalent_range code cnum =
 
 let find_event code events cnum =
   Log.debug (fun m ->
+      m "expand_to_equivalent_range events:%s" ([%show: int array] (events |> Array.map cnum_of_event)));%lwt
+  Log.debug (fun m ->
       m "expand_to_equivalent_range code:%s cnum:%d len:%d" code cnum
         (String.length code));%lwt
   let%lwt l, r = expand_to_equivalent_range code cnum in
