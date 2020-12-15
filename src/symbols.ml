@@ -240,9 +240,12 @@ let find_event code events cnum =
 let resolve t src_pos =
   try%lwt
     let%lwt mi = find_module_info t src_pos in
+    Log.debug (fun m -> m "resolve.find_module_info success");%lwt
     let%lwt code, _ = t.load_source src_pos.source in
+    Log.debug (fun m -> m "resolve.load_source success");%lwt
     let%lwt cnum = src_pos_to_cnum t src_pos in
     let ev = find_event code mi.events cnum in
+    Log.debug (fun m -> m "resolve.find_event success");%lwt
     let ev_pos = pos_of_event ev in
     let pc = { frag = mi.frag; pos = ev.Instruct.ev_pos } in
     let src_pos' =
