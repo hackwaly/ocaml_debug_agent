@@ -2,9 +2,11 @@ open Types
 
 type pc = Types.pc
 
-type breakpoint = { pc : pc }
-
-let make_breakpoint ~pc () = { pc }
+type breakpoint = {
+  pc : pc;
+  active_s : bool React.S.t;
+  set_active : bool -> unit;
+}
 
 type t = {
   breakpoint_by_pc : (pc, breakpoint) Hashtbl.t;
@@ -21,11 +23,13 @@ let make () =
 
 let set_breakpoint t b =
   Hashtbl.replace t.breakpoint_by_pc b.pc b;
-  Hashtbl.replace t.commit_queue b.pc ()
+  Hashtbl.replace t.commit_queue b.pc ();
+  Lwt.return ()
 
 let remove_breakpoint t b =
   Hashtbl.remove t.breakpoint_by_pc b.pc;
-  Hashtbl.replace t.commit_queue b.pc ()
+  Hashtbl.replace t.commit_queue b.pc ();
+  Lwt.return ()
 
 let commit t (module Rdbg : REMOTE_DEBUGGER) conn =
   let commit_one pc =
@@ -35,10 +39,14 @@ let commit t (module Rdbg : REMOTE_DEBUGGER) conn =
     | true, true ->
         Rdbg.reset_instr conn pc;%lwt
         Rdbg.set_event conn pc;%lwt
+        let bp = Hashtbl.find t.breakpoint_by_pc pc in
+        bp.set_active false;
         Hashtbl.remove t.committed pc |> Lwt.return
     | false, false ->
         Rdbg.reset_instr conn pc;%lwt
         Rdbg.set_breakpoint conn pc;%lwt
+        let bp = Hashtbl.find t.breakpoint_by_pc pc in
+        bp.set_active true;
         Hashtbl.replace t.committed pc () |> Lwt.return
     | _ -> Lwt.return ()
   in

@@ -18,7 +18,9 @@ type src_pos = Types.src_pos
 
 type pc = Types.pc
 
-type breakpoint = Breakpoints.breakpoint
+module Breakpoint = Breakpoint
+
+type breakpoint = Breakpoint.t
 
 type status = Running | Entrypoint | Breakpoint | Uncaught_exc | Exited
 [@@deriving show]
@@ -124,16 +126,13 @@ let symbols_change_event agent = Symbols.change_event agent.symbols
 
 let sources agent = Symbols.sources agent.symbols
 
-let make_breakpoint = Breakpoints.make_breakpoint
-
 let set_breakpoint agent bp =
-  Breakpoints.set_breakpoint agent.breakpoints bp;
+  Breakpoints.set_breakpoint agent.breakpoints bp;%lwt
   agent.emit_wakeup ();
   Lwt.return ()
 
 let remove_breakpoint agent bp =
-  Breakpoints.remove_breakpoint agent.breakpoints bp;
-  Lwt.return ()
+  Breakpoints.remove_breakpoint agent.breakpoints bp
 
 let terminate agent =
   Lwt.cancel agent.loop_promise;

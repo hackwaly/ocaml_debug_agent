@@ -4,7 +4,9 @@ type src_pos
 
 type pc
 
-type breakpoint
+module Breakpoint = Breakpoint
+
+type breakpoint = Breakpoint.t
 
 type status = Running | Entrypoint | Breakpoint | Uncaught_exc | Exited
 [@@deriving show]
@@ -32,8 +34,6 @@ val sources : t -> string list Lwt.t
 val status_signal : t -> status React.S.t
 
 val symbols_change_event : t -> unit React.E.t
-
-val make_breakpoint : pc:pc -> unit -> breakpoint
 
 val set_breakpoint : t -> breakpoint -> unit Lwt.t
 
