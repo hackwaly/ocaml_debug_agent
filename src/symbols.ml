@@ -1,33 +1,37 @@
 open Types
 
-type module_info =
-  { frag: int
-  ; id: string
-  ; resolved_source: string option
-  ; events: Instruct.debug_event array }
+type module_info = {
+  frag : int;
+  id : string;
+  resolved_source : string option;
+  events : Instruct.debug_event array;
+}
 
-type eventlist = {evl: Instruct.debug_event list; dirs: string list}
+type eventlist = { evl : Instruct.debug_event list; dirs : string list }
 
-type t =
-  { event_by_pc: (pc, Instruct.debug_event) Hashtbl.t
-  ; commit_queue: (pc, unit) Hashtbl.t
-  ; committed: (pc, unit) Hashtbl.t
-  ; module_info_by_id: (string, module_info) Hashtbl.t
-  ; module_info_by_digest: (string, module_info) Hashtbl.t
-  ; change_e: unit React.E.t
-  ; emit_change: unit -> unit
-  ; derive_source_paths: string -> string list -> string list Lwt.t
-  ; get_digest: string -> string Lwt.t
-  ; load_source: string -> (string * int array) Lwt.t }
+type t = {
+  event_by_pc : (pc, Instruct.debug_event) Hashtbl.t;
+  commit_queue : (pc, unit) Hashtbl.t;
+  committed : (pc, unit) Hashtbl.t;
+  module_info_by_id : (string, module_info) Hashtbl.t;
+  module_info_by_digest : (string, module_info) Hashtbl.t;
+  change_e : unit React.E.t;
+  emit_change : unit -> unit;
+  derive_source_paths : string -> string list -> string list Lwt.t;
+  get_digest : string -> string Lwt.t;
+  load_source : string -> (string * int array) Lwt.t;
+}
 
 let default_derive_source_paths mid dirs =
   dirs |> List.to_seq
   |> Seq.flat_map (fun dir ->
          List.to_seq
-           [ dir ^ "/" ^ String.uncapitalize_ascii mid ^ ".ml"
-           ; dir ^ "/" ^ String.uncapitalize_ascii mid ^ ".re"
-           ; dir ^ "/" ^ mid ^ ".ml"
-           ; dir ^ "/" ^ mid ^ ".re" ])
+           [
+             dir ^ "/" ^ String.uncapitalize_ascii mid ^ ".ml";
+             dir ^ "/" ^ String.uncapitalize_ascii mid ^ ".re";
+             dir ^ "/" ^ mid ^ ".ml";
+             dir ^ "/" ^ mid ^ ".re";
+           ])
   |> List.of_seq |> Lwt.return
 
 let make ?(derive_source_paths = default_derive_source_paths) () =
@@ -53,54 +57,55 @@ let make ?(derive_source_paths = default_derive_source_paths) () =
         in
         Lwt.return (lines |> String.concat "", bols))
   in
-  { event_by_pc= Hashtbl.create 0
-  ; commit_queue= Hashtbl.create 0
-  ; committed= Hashtbl.create 0
-  ; module_info_by_id= Hashtbl.create 0
-  ; module_info_by_digest= Hashtbl.create 0
-  ; change_e
-  ; emit_change
-  ; derive_source_paths
-  ; get_digest
-  ; load_source }
+  {
+    event_by_pc = Hashtbl.create 0;
+    commit_queue = Hashtbl.create 0;
+    committed = Hashtbl.create 0;
+    module_info_by_id = Hashtbl.create 0;
+    module_info_by_digest = Hashtbl.create 0;
+    change_e;
+    emit_change;
+    derive_source_paths;
+    get_digest;
+    load_source;
+  }
 
 let commit t (module Rdbg : REMOTE_DEBUGGER) conn =
   let commit_one pc =
     let committed = Hashtbl.mem t.committed pc in
     if%lwt Lwt.return (not committed) then (
-      Hashtbl.replace t.committed pc () ;
+      Hashtbl.replace t.committed pc ();
       Rdbg.set_event conn pc )
   in
   t.commit_queue |> Hashtbl.to_seq_keys |> List.of_seq
-  |> Lwt_list.iter_s commit_one ;%lwt
-  Hashtbl.reset t.commit_queue ;
+  |> Lwt_list.iter_s commit_one;%lwt
+  Hashtbl.reset t.commit_queue;
   Lwt.return ()
 
 let read_toc ic =
   let%lwt len = Lwt_io.length ic in
   let pos_trailer = Int64.sub len (Int64.of_int 16) in
-  Lwt_io.set_position ic pos_trailer ;%lwt
+  Lwt_io.set_position ic pos_trailer;%lwt
   let%lwt num_sections = Lwt_io.BE.read_int ic in
   let%lwt magic =
     Lwt_util.read_to_string_exactly ic (String.length Config.exec_magic_number)
   in
   if%lwt Lwt.return (magic <> Config.exec_magic_number) then
-    Lwt.fail_invalid_arg "Bad magic" ;%lwt
+    Lwt.fail_invalid_arg "Bad magic";%lwt
   let pos_toc = Int64.sub pos_trailer (Int64.of_int (8 * num_sections)) in
-  Lwt_io.set_position ic pos_toc ;%lwt
+  Lwt_io.set_position ic pos_toc;%lwt
   let section_table = ref [] in
   for%lwt i = 1 to num_sections do
     let%lwt name = Lwt_util.read_to_string_exactly ic 4 in
     let%lwt len = Lwt_io.BE.read_int ic in
-    section_table := (name, len) :: !section_table ;
+    section_table := (name, len) :: !section_table;
     Lwt.return_unit
-  done ;%lwt
+  done;%lwt
   Lwt.return (pos_toc, !section_table)
 
 let seek_section (pos, section_table) name =
   let rec seek_sec pos = function
-    | [] ->
-        raise Not_found
+    | [] -> raise Not_found
     | (name', len) :: rest ->
         let pos = Int64.sub pos (Int64.of_int len) in
         if name' = name then pos else seek_sec pos rest
@@ -108,51 +113,46 @@ let seek_section (pos, section_table) name =
   seek_sec pos section_table
 
 let relocate_event orig ev =
-  ev.Instruct.ev_pos <- orig + ev.Instruct.ev_pos ;
+  ev.Instruct.ev_pos <- orig + ev.Instruct.ev_pos;
   match ev.ev_repr with Event_parent repr -> repr := ev.ev_pos | _ -> ()
 
 let partition_modules evl =
   let rec partition_modules' ev evl =
     match evl with
-    | [] ->
-        ([ev], [])
+    | [] -> ([ ev ], [])
     | ev' :: evl ->
         let evl, evll = partition_modules' ev' evl in
         if ev.Instruct.ev_module = ev'.ev_module then (ev :: evl, evll)
-        else ([ev], evl :: evll)
+        else ([ ev ], evl :: evll)
   in
   match evl with
-  | [] ->
-      []
+  | [] -> []
   | ev :: evl ->
       let evl, evll = partition_modules' ev evl in
       evl :: evll
 
 let read_eventlists toc ic =
   let pos = seek_section toc "DBUG" in
-  Lwt_io.set_position ic pos ;%lwt
+  Lwt_io.set_position ic pos;%lwt
   let%lwt num_eventlists = Lwt_io.BE.read_int ic in
   let eventlists = ref [] in
   for%lwt i = 1 to num_eventlists do
     let%lwt orig = Lwt_io.BE.read_int ic in
     let%lwt evl = Lwt_io.read_value ic in
     let evl = (evl : Instruct.debug_event list) in
-    List.iter (relocate_event orig) evl ;
+    List.iter (relocate_event orig) evl;
     let%lwt dirs = Lwt_io.read_value ic in
     let dirs = (dirs : string list) in
-    eventlists := {evl; dirs} :: !eventlists ;
+    eventlists := { evl; dirs } :: !eventlists;
     Lwt.return ()
-  done ;%lwt
+  done;%lwt
   Lwt.return (List.rev !eventlists)
 
 let pos_of_event ev =
   match ev.Instruct.ev_kind with
-  | Event_before ->
-      ev.ev_loc.Location.loc_start
-  | Event_after _ ->
-      ev.ev_loc.Location.loc_end
-  | _ ->
-      ev.ev_loc.Location.loc_start
+  | Event_before -> ev.ev_loc.Location.loc_start
+  | Event_after _ -> ev.ev_loc.Location.loc_end
+  | _ -> ev.ev_loc.Location.loc_start
 
 let cnum_of_event ev = (pos_of_event ev).Lexing.pos_cnum
 
@@ -163,7 +163,7 @@ let load t frag path =
   (let%lwt toc = read_toc ic in
    let%lwt eventlists = read_eventlists toc ic in
    eventlists
-   |> Lwt_list.iter_s (fun {evl; dirs} ->
+   |> Lwt_list.iter_s (fun { evl; dirs } ->
           partition_modules evl
           |> Lwt_list.iter_s (fun evl ->
                  let id = (List.hd evl).Instruct.ev_module in
@@ -178,31 +178,28 @@ let load t frag path =
                  in
                  let is_pseudo_event ev =
                    match ev.Instruct.ev_kind with
-                   | Event_pseudo ->
-                       true
-                   | _ ->
-                       false
+                   | Event_pseudo -> true
+                   | _ -> false
                  in
                  evl
                  |> List.iter (fun ev ->
-                        let pc = {frag; pos= ev.Instruct.ev_pos} in
-                        Hashtbl.replace t.event_by_pc pc ev ;
-                        Hashtbl.replace t.commit_queue pc ()) ;
+                        let pc = { frag; pos = ev.Instruct.ev_pos } in
+                        Hashtbl.replace t.event_by_pc pc ev;
+                        Hashtbl.replace t.commit_queue pc ());
                  let events =
                    evl
                    |> List.filter (fun ev -> not (is_pseudo_event ev))
                    |> Array.of_list
                  in
-                 Array.fast_sort (Compare.by cnum_of_event) events ;
-                 let module_info = {frag; id; resolved_source; events} in
-                 Hashtbl.replace t.module_info_by_id id module_info ;
+                 Array.fast_sort (Compare.by cnum_of_event) events;
+                 let module_info = { frag; id; resolved_source; events } in
+                 Hashtbl.replace t.module_info_by_id id module_info;
                  ( match resolved_source with
                  | Some source ->
                      let%lwt digest = t.get_digest source in
-                     Hashtbl.replace t.module_info_by_digest digest module_info ;
+                     Hashtbl.replace t.module_info_by_digest digest module_info;
                      Lwt.return ()
-                 | None ->
-                     Lwt.return () ) ;%lwt
+                 | None -> Lwt.return () );%lwt
                  Lwt.return ())))
     [%finally Lwt_io.close ic]
 
@@ -231,16 +228,14 @@ let expand_to_equivalent_range code cnum =
 
 let find_event code events cnum =
   let l, r = expand_to_equivalent_range code cnum in
-  assert (l <= r) ;
+  assert (l <= r);
   let cmp ev () =
     let ev_cnum = cnum_of_event ev in
     if ev_cnum < l then -1 else if ev_cnum > r then 1 else 0
   in
   match events |> Array_util.bsearch ~cmp () with
-  | `At i ->
-      events.(i)
-  | _ ->
-      raise Not_found
+  | `At i -> events.(i)
+  | _ -> raise Not_found
 
 let resolve t src_pos =
   try%lwt
@@ -249,11 +244,13 @@ let resolve t src_pos =
     let%lwt cnum = src_pos_to_cnum t src_pos in
     let ev = find_event code mi.events cnum in
     let ev_pos = pos_of_event ev in
-    let pc = {frag= mi.frag; pos= ev.Instruct.ev_pos} in
+    let pc = { frag = mi.frag; pos = ev.Instruct.ev_pos } in
     let src_pos' =
-      { source= mi.resolved_source |> Option.value ~default:src_pos.source
-      ; line= ev_pos.Lexing.pos_lnum
-      ; column= ev_pos.Lexing.pos_cnum - ev_pos.Lexing.pos_bol }
+      {
+        source = mi.resolved_source |> Option.value ~default:src_pos.source;
+        line = ev_pos.Lexing.pos_lnum;
+        column = ev_pos.Lexing.pos_cnum - ev_pos.Lexing.pos_bol;
+      }
     in
     Lwt.return (Some (pc, src_pos'))
   with Not_found -> Lwt.return None

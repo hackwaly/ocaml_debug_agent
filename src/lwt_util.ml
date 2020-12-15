@@ -16,7 +16,7 @@ let write_nativeint_be out n =
 
 let read_to_string_exactly ic count =
   let buf = Bytes.create count in
-  Lwt_io.read_into_exactly ic buf 0 count ;%lwt
+  Lwt_io.read_into_exactly ic buf 0 count;%lwt
   Lwt.return (Bytes.to_string buf)
 
 let resolve_in_dirs fname dirs =
@@ -26,8 +26,7 @@ let resolve_in_dirs fname dirs =
         let path = dir ^ "/" ^ fname in
         if%lwt Lwt_unix.file_exists path then Lwt.return (Some path)
         else rec_resolve fname dirs
-    | [] ->
-        Lwt.return None
+    | [] -> Lwt.return None
   in
   rec_resolve fname dirs
 
@@ -52,15 +51,17 @@ let memo (type k v) ?(hashed = (Hashtbl.hash, ( = ))) ?(weight = fun _ -> 1)
   let rec g k =
     match C.find k c with
     | Some v ->
-        C.promote k c ; Lwt.return v
+        C.promote k c;
+        Lwt.return v
     | None -> (
-      match PC.find_opt pc k with
-      | Some p ->
-          p
-      | None ->
-          let p = f g k in
-          PC.replace pc k p ;
-          let%lwt v = p in
-          C.add k v c ; PC.remove pc k ; Lwt.return v )
+        match PC.find_opt pc k with
+        | Some p -> p
+        | None ->
+            let p = f g k in
+            PC.replace pc k p;
+            let%lwt v = p in
+            C.add k v c;
+            PC.remove pc k;
+            Lwt.return v )
   in
   g

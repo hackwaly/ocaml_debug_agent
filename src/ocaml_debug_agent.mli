@@ -9,15 +9,19 @@ type breakpoint
 type status = Running | Entrypoint | Breakpoint | Uncaught_exc | Exited
 [@@deriving show]
 
-type conn = Types.conn = {in_: Lwt_io.input_channel; out: Lwt_io.output_channel}
+type conn = Types.conn = {
+  in_ : Lwt_io.input_channel;
+  out : Lwt_io.output_channel;
+}
 
 type remote_debugger_version = OCaml_400 | OCaml_410
 
-type options =
-  { remote_debugger_version: remote_debugger_version
-  ; debug_connnection: conn
-  ; time_slice: int
-  ; symbols_file: string }
+type options = {
+  remote_debugger_version : remote_debugger_version;
+  debug_connnection : conn;
+  time_slice : int;
+  symbols_file : string;
+}
 
 val start : options -> t Lwt.t
 
