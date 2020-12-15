@@ -41,6 +41,8 @@ let start opts =
   let conn = opts.debug_connnection in
   let symbols = Symbols.make () in
   let breakpoints = Breakpoints.make () in
+  let%lwt pid = Rdbg.get_pid conn in
+  ignore pid;
   Symbols.load symbols 0 opts.symbols_file ;%lwt
   let wakeup_e, emit_wakeup = React.E.create () in
   let status_s, set_status = React.S.create Entrypoint in
