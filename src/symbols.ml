@@ -219,7 +219,9 @@ let expand_to_equivalent_range code cnum =
   let is_whitespace c =
     match c with ' ' | '\t' | '\r' | '\n' -> true | _ -> false
   in
+  Format.printf "expand_to_equivalent_range 1";
   let c = code.[cnum] in
+  Format.printf "expand_to_equivalent_range 2";
   if is_whitespace c then
     let rec aux f n =
       let n' = f n in
