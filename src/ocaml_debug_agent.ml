@@ -1,5 +1,7 @@
 open Types
 
+(* Use lwt facility instead of react *)
+
 type conn = Types.conn = {
   in_ : Lwt_io.input_channel;
   out : Lwt_io.output_channel;

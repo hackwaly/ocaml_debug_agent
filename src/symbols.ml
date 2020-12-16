@@ -224,13 +224,11 @@ let expand_to_equivalent_range code cnum =
   let is_whitespace_or_semicolon c =
     match c with ' ' | '\t' | '\r' | '\n' | ';' -> true | _ -> false
   in
-  Log.debug (fun m -> m "cnum:%d, len:%d" cnum (String.length code));%lwt
   assert (cnum >= 0 && cnum < String.length code);
   let c = code.[cnum] in
   if is_whitespace_or_semicolon c then
     let rec aux f n =
       let n' = f n in
-      Log.debug (fun m -> m "expand_to_equivalent_range.aux n:%d" n');%lwt
       let c = code.[n'] in
       if is_whitespace_or_semicolon c then aux f n' else Lwt.return n
     in
@@ -240,14 +238,7 @@ let expand_to_equivalent_range code cnum =
   else Lwt.return (cnum, cnum)
 
 let find_event code events cnum =
-  Log.debug (fun m ->
-      m "expand_to_equivalent_range events:%s" ([%show: lexing_pos array] (events |> Array.map lexing_pos_of_event)));%lwt
-  Log.debug (fun m ->
-      m "expand_to_equivalent_range code:%s cnum:%d len:%d" code cnum
-        (String.length code));%lwt
   let%lwt l, r = expand_to_equivalent_range code cnum in
-  Log.debug (fun m ->
-      m "expand_to_equivalent_range code:%s cnum:%d l:%d, r:%d" code cnum l r);%lwt
   assert (l <= r);
   let cmp ev () =
     let ev_cnum = cnum_of_event ev in
@@ -261,13 +252,9 @@ let find_event code events cnum =
 let resolve t src_pos =
   try%lwt
     let%lwt mi = find_module_info t src_pos in
-    Log.debug (fun m -> m "resolve.find_module_info success");%lwt
     let%lwt code, _ = t.load_source src_pos.source in
-    Log.debug (fun m -> m "resolve.load_source success");%lwt
     let%lwt cnum = src_pos_to_cnum t src_pos in
-    Log.debug (fun m -> m "expand_to_equivalent_range.src_pos_to_cnum src_pos:%s, cnum:%d" (show_src_pos src_pos) cnum);%lwt
     let%lwt ev = find_event code mi.events cnum in
-    Log.debug (fun m -> m "resolve.find_event success");%lwt
     let ev_pos = lexing_pos_of_event ev in
     let pc = { frag = mi.frag; pos = ev.Instruct.ev_pos } in
     let src_pos' =
