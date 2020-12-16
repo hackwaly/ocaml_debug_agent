@@ -7,6 +7,14 @@ type module_info = {
   events : Instruct.debug_event array;
 }
 
+type lexing_pos = Lexing.position = {
+  pos_fname : string;
+  pos_lnum : int;
+  pos_bol : int;
+  pos_cnum : int;
+}
+[@@deriving show]
+
 type eventlist = { evl : Instruct.debug_event list; dirs : string list }
 
 type t = {
@@ -147,13 +155,13 @@ let read_eventlists toc ic =
   done;%lwt
   Lwt.return (List.rev !eventlists)
 
-let pos_of_event ev =
+let lexing_pos_of_event ev =
   match ev.Instruct.ev_kind with
   | Event_before -> ev.ev_loc.Location.loc_start
   | Event_after _ -> ev.ev_loc.Location.loc_end
   | _ -> ev.ev_loc.Location.loc_start
 
-let cnum_of_event ev = (pos_of_event ev).Lexing.pos_cnum
+let cnum_of_event ev = (lexing_pos_of_event ev).Lexing.pos_cnum
 
 let change_event t = t.change_e
 
@@ -233,7 +241,7 @@ let expand_to_equivalent_range code cnum =
 
 let find_event code events cnum =
   Log.debug (fun m ->
-      m "expand_to_equivalent_range events:%s" ([%show: int array] (events |> Array.map cnum_of_event)));%lwt
+      m "expand_to_equivalent_range events:%s" ([%show: lexing_pos array] (events |> Array.map lexing_pos_of_event)));%lwt
   Log.debug (fun m ->
       m "expand_to_equivalent_range code:%s cnum:%d len:%d" code cnum
         (String.length code));%lwt
@@ -260,7 +268,7 @@ let resolve t src_pos =
     Log.debug (fun m -> m "expand_to_equivalent_range.src_pos_to_cnum src_pos:%s, cnum:%d" (show_src_pos src_pos) cnum);%lwt
     let%lwt ev = find_event code mi.events cnum in
     Log.debug (fun m -> m "resolve.find_event success");%lwt
-    let ev_pos = pos_of_event ev in
+    let ev_pos = lexing_pos_of_event ev in
     let pc = { frag = mi.frag; pos = ev.Instruct.ev_pos } in
     let src_pos' =
       {
