@@ -5,32 +5,37 @@ let get_pid conn =
   let%lwt neg_one = Lwt_io.BE.read_int conn.in_ in
   [%lwt assert (neg_one = -1)];%lwt
   let%lwt pid = Lwt_io.BE.read_int conn.in_ in
-  Log.debug (fun m -> m "get_pid -> pid:%d" pid);%lwt
+  Log.debug (fun m -> m "get_pid return %d" pid);%lwt
   Lwt.return pid
 
 let set_event conn pc =
   Log.debug (fun m -> m "set_event pc:%s" (show_pc pc));%lwt
   Lwt_io.write_char conn.out 'e';%lwt
   Lwt_io.BE.write_int conn.out pc.frag;%lwt
-  Lwt_io.BE.write_int conn.out pc.pos
+  Lwt_io.BE.write_int conn.out pc.pos;%lwt
+  Log.debug (fun m -> m "set_event return")
 
 let set_breakpoint conn pc =
   Log.debug (fun m -> m "set_breakpoint pc:%s" (show_pc pc));%lwt
   Lwt_io.write_char conn.out 'B';%lwt
   Lwt_io.BE.write_int conn.out pc.frag;%lwt
-  Lwt_io.BE.write_int conn.out pc.pos
+  Lwt_io.BE.write_int conn.out pc.pos;%lwt
+  Log.debug (fun m -> m "set_breakpoint return")
 
 let reset_instr conn pc =
   Log.debug (fun m -> m "reset_instr pc:%s" (show_pc pc));%lwt
   Lwt_io.write_char conn.out 'i';%lwt
   Lwt_io.BE.write_int conn.out pc.frag;%lwt
-  Lwt_io.BE.write_int conn.out pc.pos
+  Lwt_io.BE.write_int conn.out pc.pos;%lwt
+  Log.debug (fun m -> m "reset_instr return")
 
 let checkpoint conn =
   Log.debug (fun m -> m "checkpoint");%lwt
   assert (not Sys.win32);
   let%lwt pid = Lwt_io.BE.read_int conn.in_ in
-  Lwt.return (if pid = -1 then Checkpoint_failed else Checkpoint_done pid)
+  let res = if pid = -1 then Checkpoint_failed else Checkpoint_done pid in
+  Log.debug (fun m -> m "checkpoint return %s" (show_checkpoint_report res));%lwt
+  Lwt.return res
 
 let go conn n =
   Log.debug (fun m -> m "go n:%d" n);%lwt
@@ -66,16 +71,18 @@ let go conn n =
       rep_program_pointer = { frag; pos };
     }
   in
-  Log.debug (fun m -> m "go -> report: %s" (show_report report));%lwt
+  Log.debug (fun m -> m "go return %s" (show_report report));%lwt
   Lwt.return report
 
 let stop conn =
   Log.debug (fun m -> m "stop");%lwt
-  Lwt_io.write_char conn.out 's'
+  Lwt_io.write_char conn.out 's';%lwt
+  Log.debug (fun m -> m "stop return")
 
 let wait conn =
   Log.debug (fun m -> m "wait");%lwt
-  Lwt_io.write_char conn.out 'w'
+  Lwt_io.write_char conn.out 'w';%lwt
+  Log.debug (fun m -> m "wait return")
 
 let initial_frame conn =
   Log.debug (fun m -> m "initial_frame");%lwt
@@ -83,6 +90,8 @@ let initial_frame conn =
   let%lwt stack_pos = Lwt_io.BE.read_int conn.in_ in
   let%lwt frag = Lwt_io.BE.read_int conn.in_ in
   let%lwt pos = Lwt_io.BE.read_int conn.in_ in
+  Log.debug (fun m ->
+      m "initial_frame return %s" ([%show: int * pc] (stack_pos, { frag; pos })));%lwt
   Lwt.return (stack_pos, { frag; pos })
 
 let get_frame conn =
@@ -91,28 +100,34 @@ let get_frame conn =
   let%lwt stack_pos = Lwt_io.BE.read_int conn.in_ in
   let%lwt frag = Lwt_io.BE.read_int conn.in_ in
   let%lwt pos = Lwt_io.BE.read_int conn.in_ in
+  Log.debug (fun m ->
+      m "get_frame return %s" ([%show: int * pc] (stack_pos, { frag; pos })));%lwt
   Lwt.return (stack_pos, { frag; pos })
 
 let set_frame conn stack_pos =
   Log.debug (fun m -> m "set_frame stack_pos:%d" stack_pos);%lwt
   Lwt_io.write_char conn.out 'S';%lwt
-  Lwt_io.BE.write_int conn.out stack_pos
+  Lwt_io.BE.write_int conn.out stack_pos;%lwt
+  Log.debug (fun m -> m "set_frame return")
 
 let up_frame conn stacksize =
   Log.debug (fun m -> m "up_frame stacksize:%d" stacksize);%lwt
   Lwt_io.write_char conn.out 'U';%lwt
-  Lwt_io.BE.write_int conn.out stacksize
+  Lwt_io.BE.write_int conn.out stacksize;%lwt
+  Log.debug (fun m -> m "set_frame return")
 
 let set_trap_barrier conn pos =
   Log.debug (fun m -> m "set_trap_barrier pos:%d" pos);%lwt
   Lwt_io.write_char conn.out 'b';%lwt
-  Lwt_io.BE.write_int conn.out pos
+  Lwt_io.BE.write_int conn.out pos;%lwt
+  Log.debug (fun m -> m "set_frame return")
 
 let get_local conn index =
   Log.debug (fun m -> m "get_local index:%d" index);%lwt
   Lwt_io.write_char conn.out 'L';%lwt
   Lwt_io.BE.write_int conn.out index;%lwt
   let%lwt rv = Lwt_util.read_nativeint_be conn.in_ in
+  Log.debug (fun m -> m "get_local return %s" (show_remote_value rv));%lwt
   Lwt.return rv
 
 let get_environment conn index =
@@ -120,26 +135,30 @@ let get_environment conn index =
   Lwt_io.write_char conn.out 'E';%lwt
   Lwt_io.BE.write_int conn.out index;%lwt
   let%lwt rv = Lwt_util.read_nativeint_be conn.in_ in
+  Log.debug (fun m -> m "get_environment return %s" (show_remote_value rv));%lwt
   Lwt.return rv
 
 let get_global conn index =
-  Log.debug (fun m -> m "get_environment index:%d" index);%lwt
+  Log.debug (fun m -> m "get_global index:%d" index);%lwt
   Lwt_io.write_char conn.out 'G';%lwt
   Lwt_io.BE.write_int conn.out index;%lwt
   let%lwt rv = Lwt_util.read_nativeint_be conn.in_ in
+  Log.debug (fun m -> m "get_global return %s" (show_remote_value rv));%lwt
   Lwt.return rv
 
 let get_accu conn =
   Log.debug (fun m -> m "get_accu");%lwt
   Lwt_io.write_char conn.out 'A';%lwt
   let%lwt rv = Lwt_util.read_nativeint_be conn.in_ in
+  Log.debug (fun m -> m "get_accu return %s" (show_remote_value rv));%lwt
   Lwt.return rv
 
 let get_header conn rv =
-  Log.debug (fun m -> m "get_header rv:%s" (Nativeint.to_string rv));%lwt
+  Log.debug (fun m -> m "get_header rv:%s" (show_remote_value rv));%lwt
   Lwt_io.write_char conn.out 'H';%lwt
   Lwt_util.write_nativeint_be conn.out rv;%lwt
   let%lwt hdr = Lwt_io.BE.read_int conn.in_ in
+  Log.debug (fun m -> m "get_header return %d" hdr);%lwt
   Lwt.return hdr
 
 let get_field conn rv index =
@@ -147,32 +166,39 @@ let get_field conn rv index =
   Lwt_io.write_char conn.out 'F';%lwt
   Lwt_util.write_nativeint_be conn.out rv;%lwt
   Lwt_io.BE.write_int conn.out index;%lwt
-  match%lwt Lwt_io.read_char conn.in_ with
-  | '\000' ->
-      let%lwt rv = Lwt_util.read_nativeint_be conn.in_ in
-      Lwt.return (Remote_value rv)
-  | '\001' ->
-      let%lwt v = Lwt_io.read_float64 conn.in_ in
-      Lwt.return (Double v)
-  | _ -> [%lwt assert false]
+  let%lwt res =
+    match%lwt Lwt_io.read_char conn.in_ with
+    | '\000' ->
+        let%lwt rv = Lwt_util.read_nativeint_be conn.in_ in
+        Lwt.return (Remote_value rv)
+    | '\001' ->
+        let%lwt v = Lwt_io.read_float64 conn.in_ in
+        Lwt.return (Double v)
+    | _ -> [%lwt assert false]
+  in
+  Log.debug (fun m -> m "get_field return %s" (show_get_field_result res));%lwt
+  Lwt.return res
 
 let marshal_obj conn rv =
-  Log.debug (fun m -> m "marshal_obj rv:%s" (Nativeint.to_string rv));%lwt
+  Log.debug (fun m -> m "marshal_obj rv:%s" (show_remote_value rv));%lwt
   Lwt_io.write_char conn.out 'M';%lwt
   Lwt_util.write_nativeint_be conn.out rv;%lwt
   let%lwt v = Lwt_io.read_value conn.in_ in
+  Log.debug (fun m -> m "marshal_obj return obj");%lwt
   Lwt.return v
 
 let get_closure_code conn rv =
-  Log.debug (fun m -> m "get_closure_code rv:%s" (Nativeint.to_string rv));%lwt
+  Log.debug (fun m -> m "get_closure_code rv:%s" (show_remote_value rv));%lwt
   Lwt_io.write_char conn.out 'M';%lwt
   Lwt_util.write_nativeint_be conn.out rv;%lwt
   let%lwt frag = Lwt_io.BE.read_int conn.in_ in
   let%lwt pos = Lwt_io.BE.read_int conn.in_ in
+  Log.debug (fun m -> m "get_closure_code return %s" (show_pc { frag; pos }));%lwt
   Lwt.return { frag; pos }
 
 let set_fork_mode conn mode =
   Log.debug (fun m -> m "set_fork_mode mode:%s" (show_fork_mode mode));%lwt
   Lwt_io.write_char conn.out 'K';%lwt
   Lwt_io.BE.write_int conn.out
-    (match mode with Fork_child -> 0 | Fork_parent -> 1)
+    (match mode with Fork_child -> 0 | Fork_parent -> 1);%lwt
+  Log.debug (fun m -> m "set_fork_mode return")

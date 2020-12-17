@@ -30,10 +30,13 @@ type report = {
 [@@deriving show]
 
 type checkpoint_report = Checkpoint_done of int | Checkpoint_failed
+[@@deriving show]
 
 type remote_value = nativeint
+[@@deriving show]
 
 type get_field_result = Remote_value of remote_value | Double of float
+[@@deriving show]
 
 module type REMOTE_DEBUGGER = sig
   val get_pid : conn -> int Lwt.t
