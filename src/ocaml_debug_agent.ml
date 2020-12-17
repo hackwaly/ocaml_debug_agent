@@ -132,6 +132,8 @@ let start opts =
       pendings = [];
     }
 
+let lexing_pos_of_debug_event = Symbols.lexing_pos_of_debug_event
+
 let push_pending agent f =
   agent.pendings <- f :: agent.pendings;
   agent.wake_up ()

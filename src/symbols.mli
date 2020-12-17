@@ -15,4 +15,6 @@ val resolve : t -> src_pos -> (pc * src_pos) option Lwt.t
 
 val lookup_event : t -> pc -> Instruct.debug_event
 
+val lexing_pos_of_debug_event : Instruct.debug_event -> Lexing.position
+
 val sources : t -> string list Lwt.t

@@ -37,6 +37,8 @@ val start : options -> t Lwt.t
 
 val resolve : t -> src_pos -> (pc * src_pos) option Lwt.t
 
+val lexing_pos_of_debug_event : Instruct.debug_event -> Lexing.position
+
 val sources : t -> string list Lwt.t
 
 val stack_trace : t -> stack_frame list Lwt.t

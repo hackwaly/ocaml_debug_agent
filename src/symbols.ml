@@ -149,13 +149,13 @@ let read_eventlists toc ic =
   done;%lwt
   Lwt.return (List.rev !eventlists)
 
-let lexing_pos_of_event ev =
+let lexing_pos_of_debug_event ev =
   match ev.Instruct.ev_kind with
   | Event_before -> ev.ev_loc.Location.loc_start
   | Event_after _ -> ev.ev_loc.Location.loc_end
   | _ -> ev.ev_loc.Location.loc_start
 
-let cnum_of_event ev = (lexing_pos_of_event ev).Lexing.pos_cnum
+let cnum_of_event ev = (lexing_pos_of_debug_event ev).Lexing.pos_cnum
 
 let change_event t = t.change_e
 
@@ -252,7 +252,7 @@ let resolve t src_pos =
     let%lwt code, _ = t.load_source src_pos.source in
     let%lwt cnum = src_pos_to_cnum t src_pos in
     let%lwt ev = find_event code mi.events cnum in
-    let ev_pos = lexing_pos_of_event ev in
+    let ev_pos = lexing_pos_of_debug_event ev in
     let pc = { frag = mi.frag; pos = ev.Instruct.ev_pos } in
     let src_pos' =
       {
