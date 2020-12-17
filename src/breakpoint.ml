@@ -7,6 +7,8 @@ type t = Breakpoints.breakpoint = {
   set_active : bool -> unit;
 }
 
+let id t = t.id
+
 let make ~id ~pc () =
   let active_s, set_active = React.S.create false in
   { id; pc; active_s; set_active }
