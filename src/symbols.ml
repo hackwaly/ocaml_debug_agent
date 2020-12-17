@@ -7,14 +7,6 @@ type module_info = {
   events : Instruct.debug_event array;
 }
 
-type lexing_pos = Lexing.position = {
-  pos_fname : string;
-  pos_lnum : int;
-  pos_bol : int;
-  pos_cnum : int;
-}
-[@@deriving show]
-
 type eventlist = { evl : Instruct.debug_event list; dirs : string list }
 
 type t = {

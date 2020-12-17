@@ -33,10 +33,10 @@ type t = {
   conn : conn;
   symbols : Symbols.t;
   loop_promise : unit Lwt.t;
-  emit_wakeup : unit -> unit;
   breakpoints : Breakpoints.t;
   set_pause_flag : bool -> unit;
   status_s : status React.S.t;
+  wake_up : unit -> unit Lwt.t;
 }
 
 let start opts =
@@ -52,9 +52,14 @@ let start opts =
   let%lwt pid = Rdbg.get_pid conn in
   ignore pid;
   Symbols.load symbols 0 opts.symbols_file;%lwt
-  let wakeup_e, emit_wakeup = React.E.create () in
   let status_s, set_status = React.S.create Entrypoint in
-  let pause_flag_s, set_pause_flag = React.S.create true in
+  let pause_flag = ref true in
+  let set_pause_flag v = pause_flag := v in
+  let wake_up_mvar = Lwt_mvar.create () in
+  let wake_up () =
+    if Lwt_mvar.is_empty wake_up_mvar then Lwt_mvar.put wake_up_mvar ()
+    else Lwt.return ()
+  in
   let loop () =
     let commit () =
       Symbols.commit symbols (module Rdbg) conn;%lwt
@@ -64,8 +69,7 @@ let start opts =
       let%lwt report = Rdbg.go conn opts.time_slice in
       match report.rep_type with
       | Exited | Breakpoint | Uncaught_exc -> Lwt.return report
-      | Event ->
-          if React.S.value pause_flag_s then Lwt.return report else next ()
+      | Event -> if !pause_flag then Lwt.return report else next ()
       | _ -> next ()
     in
     let break = ref false in
@@ -74,14 +78,9 @@ let start opts =
       commit ();%lwt
       Log.debug (fun m -> m "commit end");%lwt
       Log.debug (fun m -> m "pull start");%lwt
-      if%lwt Lwt.return (React.S.value pause_flag_s) then (
-        Lwt_react.E.next wakeup_e;%lwt
-        Log.debug (fun m -> m "wakeup end");%lwt
-        Lwt.pause ();
-      );%lwt
+      if !pause_flag then Lwt_mvar.take wake_up_mvar else Lwt.return ();%lwt
       Log.debug (fun m -> m "pull end");%lwt
-      if%lwt Lwt.return (not (React.S.value pause_flag_s)) then (
-        Lwt.pause ();%lwt
+      if not !pause_flag then (
         set_status Running;
         Log.debug (fun m -> m "next start");%lwt
         let%lwt report = next () in
@@ -102,6 +101,7 @@ let start opts =
               | _ -> assert false );
             Lwt.return ()
         | _ -> [%lwt assert false] )
+      else Lwt.return ()
     done
   in
   let loop_promise = loop () in
@@ -111,9 +111,9 @@ let start opts =
       conn;
       symbols;
       loop_promise;
-      emit_wakeup;
       breakpoints;
       set_pause_flag;
+      wake_up;
       status_s;
     }
 
@@ -127,9 +127,7 @@ let sources agent = Symbols.sources agent.symbols
 
 let set_breakpoint agent bp =
   Breakpoints.set_breakpoint agent.breakpoints bp;%lwt
-  Lwt.pause ();%lwt
-  agent.emit_wakeup ();
-  Lwt.return ()
+  agent.wake_up ()
 
 let remove_breakpoint agent bp =
   Breakpoints.remove_breakpoint agent.breakpoints bp
@@ -139,13 +137,10 @@ let terminate agent =
   Lwt.return ()
 
 let continue agent =
-  Lwt.pause ();%lwt
   agent.set_pause_flag false;
-  agent.emit_wakeup ();
-  Lwt.return ()
+  agent.wake_up ()
 
 let pause agent =
-  Lwt.pause ();%lwt
   agent.set_pause_flag true;
   Lwt.return ()
 
