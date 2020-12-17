@@ -44,7 +44,7 @@ type t = {
   set_pause_flag : bool -> unit;
   status_s : status React.S.t;
   wake_up : unit -> unit Lwt.t;
-  mutable pendings : (unit -> unit Lwt.t) list;
+  push_pending : (unit -> unit Lwt.t) -> unit;
 }
 
 let start opts =
@@ -60,6 +60,8 @@ let start opts =
   let%lwt pid = Rdbg.get_pid conn in
   ignore pid;
   Symbols.load symbols 0 opts.symbols_file;%lwt
+  let pendings = ref [] in
+  let push_pending f = pendings := f :: !pendings in
   let status_s, set_status = React.S.create Entrypoint in
   let pause_flag = ref true in
   let set_pause_flag v = pause_flag := v in
@@ -72,6 +74,9 @@ let start opts =
   let loop () =
     let commit () =
       Symbols.commit symbols (module Rdbg) conn;%lwt
+      let tasks = !pendings in
+      pendings := [];
+      tasks |> Lwt_list.iter_s (fun f -> f ());%lwt
       Breakpoints.commit breakpoints (module Rdbg) conn
     in
     let rec run_slice () =
@@ -129,13 +134,13 @@ let start opts =
       set_pause_flag;
       wake_up;
       status_s;
-      pendings = [];
+      push_pending;
     }
 
 let lexing_pos_of_debug_event = Symbols.lexing_pos_of_debug_event
 
 let push_pending agent f =
-  agent.pendings <- f :: agent.pendings;
+  agent.push_pending f;
   agent.wake_up ()
 
 let resolve agent src_pos = Symbols.resolve agent.symbols src_pos
