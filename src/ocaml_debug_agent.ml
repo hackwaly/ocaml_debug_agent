@@ -193,6 +193,7 @@ let stack_trace agent =
            let%lwt frames =
              walk_up 0 intial_frame.debug_event.ev_stacksize [ intial_frame ]
            in
+           let frames = List.rev frames in
            Lwt.wakeup_later resolver frames;
            Lwt.return ())
             [%finally Rdbg.set_frame conn curr_fr_sp]);%lwt
