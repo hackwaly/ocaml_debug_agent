@@ -48,6 +48,10 @@ val lexing_pos_of_debug_event : Instruct.debug_event -> Lexing.position
 
 val module_info_list : t -> module_info list Lwt.t
 
+val find_module_info_by_src_pos : t -> src_pos -> module_info Lwt.t
+
+val find_module_info_by_id : t -> string -> module_info Lwt.t
+
 val stack_trace : t -> stack_frame list Lwt.t
 
 val status_signal : t -> status React.S.t

@@ -158,6 +158,10 @@ let symbols_change_event agent = Symbols.change_event agent.symbols
 
 let module_info_list agent = Symbols.module_info_list agent.symbols
 
+let find_module_info_by_src_pos agent = Symbols.find_module_info_by_src_pos agent.symbols
+
+let find_module_info_by_id agent = Symbols.find_module_info_by_id agent.symbols
+
 let stack_trace agent =
   match agent.status_s |> React.S.value with
   | Running -> [%lwt assert false]
