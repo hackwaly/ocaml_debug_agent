@@ -57,7 +57,10 @@ let start opts =
   let set_pause_flag v = pause_flag := v in
   let wake_up_mvar = Lwt_mvar.create () in
   let wake_up () =
-    if Lwt_mvar.is_empty wake_up_mvar then Lwt_mvar.put wake_up_mvar ()
+    if Lwt_mvar.is_empty wake_up_mvar then (
+      Log.debug (fun m -> m "wake up");%lwt
+      Lwt_mvar.put wake_up_mvar ()
+    )
     else Lwt.return ()
   in
   let loop () =
@@ -65,25 +68,25 @@ let start opts =
       Symbols.commit symbols (module Rdbg) conn;%lwt
       Breakpoints.commit breakpoints (module Rdbg) conn
     in
-    let rec next () =
+    let rec run_slice () =
       let%lwt report = Rdbg.go conn opts.time_slice in
       match report.rep_type with
       | Exited | Breakpoint | Uncaught_exc -> Lwt.return report
-      | Event -> if !pause_flag then Lwt.return report else next ()
-      | _ -> next ()
+      | Event -> if !pause_flag then Lwt.return report else run_slice ()
+      | _ -> run_slice ()
     in
     let break = ref false in
     while%lwt not !break do
       Log.debug (fun m -> m "commit start");%lwt
       commit ();%lwt
       Log.debug (fun m -> m "commit end");%lwt
-      Log.debug (fun m -> m "pull start");%lwt
+      Log.debug (fun m -> m "sleep");%lwt
       if !pause_flag then Lwt_mvar.take wake_up_mvar else Lwt.return ();%lwt
-      Log.debug (fun m -> m "pull end");%lwt
+      Log.debug (fun m -> m "waked up");%lwt
       if not !pause_flag then (
         set_status Running;
         Log.debug (fun m -> m "next start");%lwt
-        let%lwt report = next () in
+        let%lwt report = run_slice () in
         Log.debug (fun m -> m "next end");%lwt
         set_pause_flag true;
         match report.rep_type with
