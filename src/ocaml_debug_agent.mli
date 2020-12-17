@@ -40,6 +40,8 @@ val set_breakpoint : t -> breakpoint -> unit Lwt.t
 
 val remove_breakpoint : t -> breakpoint -> unit Lwt.t
 
+val check_breakpoint : t -> pc -> breakpoint option Lwt.t
+
 val terminate : t -> unit Lwt.t
 
 val continue : t -> unit Lwt.t

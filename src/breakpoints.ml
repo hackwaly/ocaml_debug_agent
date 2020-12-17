@@ -3,6 +3,7 @@ open Types
 type pc = Types.pc
 
 type breakpoint = {
+  id : int;
   pc : pc;
   active_s : bool React.S.t;
   set_active : bool -> unit;
@@ -33,8 +34,8 @@ let remove_breakpoint t b =
   Lwt.return ()
 
 (* TODO: Conditional breakpoint *)
-let should_pause t pc =
-  Lwt.return (Hashtbl.mem t.breakpoint_by_pc pc)
+let check_breakpoint t pc =
+  Lwt.return (Hashtbl.find_opt t.breakpoint_by_pc pc)
 
 let commit t (module Rdbg : REMOTE_DEBUGGER) conn =
   let commit_one pc =

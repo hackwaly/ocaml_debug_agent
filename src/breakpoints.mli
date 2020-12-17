@@ -1,6 +1,7 @@
 open Types
 
 type breakpoint = {
+  id : int;
   pc : pc;
   active_s : bool React.S.t;
   set_active : bool -> unit;
@@ -14,6 +15,6 @@ val set_breakpoint : t -> breakpoint -> unit Lwt.t
 
 val remove_breakpoint : t -> breakpoint -> unit Lwt.t
 
-val should_pause : t -> pc -> bool Lwt.t
+val check_breakpoint : t -> pc -> breakpoint option Lwt.t
 
 val commit : t -> (module REMOTE_DEBUGGER) -> conn -> unit Lwt.t

@@ -70,7 +70,8 @@ let start opts =
       let%lwt report = Rdbg.go conn opts.time_slice in
       match report.rep_type with
       | Breakpoint ->
-          if%lwt Breakpoints.should_pause breakpoints report.rep_program_pointer
+          let%lwt bp = Breakpoints.check_breakpoint breakpoints report.rep_program_pointer in
+          if Option.is_some bp
           then Lwt.return report
           else run_slice ()
       | Exited | Uncaught_exc -> Lwt.return report
@@ -137,6 +138,9 @@ let set_breakpoint agent bp =
 let remove_breakpoint agent bp =
   Breakpoints.remove_breakpoint agent.breakpoints bp;%lwt
   agent.wake_up ()
+
+let check_breakpoint agent pc =
+  Breakpoints.check_breakpoint agent.breakpoints pc
 
 let terminate agent =
   Lwt.cancel agent.loop_promise;
