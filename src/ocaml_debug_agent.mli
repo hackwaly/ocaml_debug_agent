@@ -5,6 +5,13 @@ type src_pos = Types.src_pos = { source : string; line : int; column : int }
 
 type pc = Types.pc
 
+type module_info = Symbols.module_info = {
+  frag : int;
+  id : string;
+  resolved_source : string option;
+  events : Instruct.debug_event array;
+}
+
 module Breakpoint = Breakpoint
 
 type breakpoint = Breakpoint.t
@@ -39,7 +46,7 @@ val resolve : t -> src_pos -> (pc * src_pos) option Lwt.t
 
 val lexing_pos_of_debug_event : Instruct.debug_event -> Lexing.position
 
-val sources : t -> string list Lwt.t
+val module_info_list : t -> module_info list Lwt.t
 
 val stack_trace : t -> stack_frame list Lwt.t
 

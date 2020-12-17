@@ -21,6 +21,13 @@ type src_pos = Types.src_pos = { source : string; line : int; column : int }
 
 type pc = Types.pc
 
+type module_info = Symbols.module_info = {
+  frag : int;
+  id : string;
+  resolved_source : string option;
+  events : Instruct.debug_event array;
+}
+
 module Breakpoint = Breakpoint
 
 type breakpoint = Breakpoint.t
@@ -149,7 +156,7 @@ let status_signal agent = agent.status_s
 
 let symbols_change_event agent = Symbols.change_event agent.symbols
 
-let sources agent = Symbols.sources agent.symbols
+let module_info_list agent = Symbols.module_info_list agent.symbols
 
 let stack_trace agent =
   match agent.status_s |> React.S.value with

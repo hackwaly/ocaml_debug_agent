@@ -28,4 +28,4 @@ val find_module_info_by_src_pos : t -> src_pos -> module_info Lwt.t
 
 val find_module_info_by_id : t -> string -> module_info Lwt.t
 
-val sources : t -> string list Lwt.t
+val module_info_list : t -> module_info list Lwt.t
