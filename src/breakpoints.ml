@@ -40,6 +40,7 @@ let commit t (module Rdbg : REMOTE_DEBUGGER) conn =
     | true, true ->
         Rdbg.reset_instr conn pc;%lwt
         Rdbg.set_event conn pc;%lwt
+        Log.debug (fun m -> m "breakpoints commit 6");%lwt
         let bp = Hashtbl.find t.breakpoint_by_pc pc in
         Log.debug (fun m -> m "breakpoints commit 2");%lwt
         bp.set_active false;
@@ -48,6 +49,7 @@ let commit t (module Rdbg : REMOTE_DEBUGGER) conn =
     | false, false ->
         Rdbg.reset_instr conn pc;%lwt
         Rdbg.set_breakpoint conn pc;%lwt
+        Log.debug (fun m -> m "breakpoints commit 7");%lwt
         let bp = Hashtbl.find t.breakpoint_by_pc pc in
         Log.debug (fun m -> m "breakpoints commit 4");%lwt
         bp.set_active true;
