@@ -57,11 +57,9 @@ let start opts =
   let set_pause_flag v = pause_flag := v in
   let wake_up_mvar = Lwt_mvar.create () in
   let wake_up () =
-    if Lwt_mvar.is_empty wake_up_mvar then (
-      Log.debug (fun m -> m "wake up");%lwt
-      Lwt_mvar.put wake_up_mvar ()
-    )
-    else Lwt.return ()
+    Log.debug (fun m -> m "wake up");%lwt
+    Lwt_mvar.take_available wake_up_mvar |> ignore;
+    Lwt_mvar.put wake_up_mvar ()
   in
   let loop () =
     let commit () =
