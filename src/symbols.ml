@@ -76,9 +76,11 @@ let commit t (module Rdbg : REMOTE_DEBUGGER) conn =
       Hashtbl.replace t.committed pc ();
       Rdbg.set_event conn pc )
   in
+  Log.debug (fun m -> m "symbols commit start");%lwt
   t.commit_queue |> Hashtbl.to_seq_keys |> List.of_seq
   |> Lwt_list.iter_s commit_one;%lwt
   Hashtbl.reset t.commit_queue;
+  Log.debug (fun m -> m "symbols commit end");%lwt
   Lwt.return ()
 
 let read_toc ic =
