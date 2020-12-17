@@ -1,5 +1,12 @@
 open Types
 
+type module_info = {
+  frag : int;
+  id : string;
+  resolved_source : string option;
+  events : Instruct.debug_event array;
+}
+
 type t
 
 val make :
@@ -16,5 +23,9 @@ val resolve : t -> src_pos -> (pc * src_pos) option Lwt.t
 val lookup_event : t -> pc -> Instruct.debug_event
 
 val lexing_pos_of_debug_event : Instruct.debug_event -> Lexing.position
+
+val find_module_info_by_src_pos : t -> src_pos -> module_info Lwt.t
+
+val find_module_info_by_id : t -> string -> module_info Lwt.t
 
 val sources : t -> string list Lwt.t

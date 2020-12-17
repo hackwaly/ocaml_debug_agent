@@ -212,9 +212,12 @@ let src_pos_to_cnum t src_pos =
   let bol = bols.(src_pos.line - 1) in
   Lwt.return (bol + src_pos.column)
 
-let find_module_info t src_pos =
+let find_module_info_by_src_pos t src_pos =
   let%lwt digest = t.get_digest src_pos.source in
   Hashtbl.find t.module_info_by_digest digest |> Lwt.return
+
+let find_module_info_by_id t id =
+  Hashtbl.find t.module_info_by_id id |> Lwt.return
 
 let expand_to_equivalent_range code cnum =
   (* TODO: Support skip comments *)
@@ -248,7 +251,7 @@ let find_event code events cnum =
 
 let resolve t src_pos =
   try%lwt
-    let%lwt mi = find_module_info t src_pos in
+    let%lwt mi = find_module_info_by_src_pos t src_pos in
     let%lwt code, _ = t.load_source src_pos.source in
     let%lwt cnum = src_pos_to_cnum t src_pos in
     let%lwt ev = find_event code mi.events cnum in
