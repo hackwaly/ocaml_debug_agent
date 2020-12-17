@@ -12,6 +12,13 @@ type breakpoint = Breakpoint.t
 type status = Running | Entrypoint | Breakpoint | Uncaught_exc | Exited
 [@@deriving show]
 
+type stack_frame = {
+  index : int;
+  stack_pos : int;
+  pc : pc;
+  debug_event : Instruct.debug_event;
+}
+
 type conn = Types.conn = {
   in_ : Lwt_io.input_channel;
   out : Lwt_io.output_channel;
@@ -31,6 +38,8 @@ val start : options -> t Lwt.t
 val resolve : t -> src_pos -> (pc * src_pos) option Lwt.t
 
 val sources : t -> string list Lwt.t
+
+val stack_trace : t -> stack_frame list Lwt.t
 
 val status_signal : t -> status React.S.t
 

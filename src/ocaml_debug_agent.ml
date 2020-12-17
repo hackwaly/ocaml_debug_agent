@@ -28,6 +28,13 @@ type breakpoint = Breakpoint.t
 type status = Running | Entrypoint | Breakpoint | Uncaught_exc | Exited
 [@@deriving show]
 
+type stack_frame = {
+  index : int;
+  stack_pos : int;
+  pc : pc;
+  debug_event : Instruct.debug_event;
+}
+
 type t = {
   rdbg : (module REMOTE_DEBUGGER);
   conn : conn;
@@ -37,6 +44,7 @@ type t = {
   set_pause_flag : bool -> unit;
   status_s : status React.S.t;
   wake_up : unit -> unit Lwt.t;
+  mutable pendings : (unit -> unit Lwt.t) list;
 }
 
 let start opts =
@@ -70,10 +78,10 @@ let start opts =
       let%lwt report = Rdbg.go conn opts.time_slice in
       match report.rep_type with
       | Breakpoint ->
-          let%lwt bp = Breakpoints.check_breakpoint breakpoints report.rep_program_pointer in
-          if Option.is_some bp
-          then Lwt.return report
-          else run_slice ()
+          let%lwt bp =
+            Breakpoints.check_breakpoint breakpoints report.rep_program_pointer
+          in
+          if Option.is_some bp then Lwt.return report else run_slice ()
       | Exited | Uncaught_exc -> Lwt.return report
       | Event -> if !pause_flag then Lwt.return report else run_slice ()
       | _ -> run_slice ()
@@ -88,9 +96,9 @@ let start opts =
       Log.debug (fun m -> m "waked up");%lwt
       if not !pause_flag then (
         set_status Running;
-        Log.debug (fun m -> m "next start");%lwt
+        Log.debug (fun m -> m "run_slice start");%lwt
         let%lwt report = run_slice () in
-        Log.debug (fun m -> m "next end");%lwt
+        Log.debug (fun m -> m "run_slice end");%lwt
         set_pause_flag true;
         match report.rep_type with
         | Exited ->
@@ -121,7 +129,12 @@ let start opts =
       set_pause_flag;
       wake_up;
       status_s;
+      pendings = [];
     }
+
+let push_pending agent f =
+  agent.pendings <- f :: agent.pendings;
+  agent.wake_up ()
 
 let resolve agent src_pos = Symbols.resolve agent.symbols src_pos
 
@@ -130,6 +143,42 @@ let status_signal agent = agent.status_s
 let symbols_change_event agent = Symbols.change_event agent.symbols
 
 let sources agent = Symbols.sources agent.symbols
+
+let stack_trace agent =
+  match agent.status_s |> React.S.value with
+  | Running -> [%lwt assert false]
+  | Entrypoint -> Lwt.return []
+  | _ ->
+      let promise, resolver = Lwt.task () in
+      push_pending agent (fun () ->
+          let (module Rdbg) = agent.rdbg in
+          let conn = agent.conn in
+          let%lwt curr_fr_sp, _ = Rdbg.get_frame conn in
+          let make_frame index sp pc =
+            {
+              index;
+              stack_pos = sp;
+              pc;
+              debug_event = Symbols.lookup_event agent.symbols pc;
+            }
+          in
+          let rec walk_up index stacksize frames =
+            let index = index + 1 in
+            match%lwt Rdbg.up_frame conn stacksize with
+            | Some (sp, pc) ->
+                let frame = make_frame index sp pc in
+                walk_up index frame.debug_event.ev_stacksize (frame :: frames)
+            | None -> Lwt.return frames
+          in
+          (let%lwt sp, pc = Rdbg.initial_frame conn in
+           let intial_frame = make_frame 0 sp pc in
+           let%lwt frames =
+             walk_up 0 intial_frame.debug_event.ev_stacksize [ intial_frame ]
+           in
+           Lwt.wakeup_later resolver frames;
+           Lwt.return ())
+            [%finally Rdbg.set_frame conn curr_fr_sp]);%lwt
+      promise
 
 let set_breakpoint agent bp =
   Breakpoints.set_breakpoint agent.breakpoints bp;%lwt

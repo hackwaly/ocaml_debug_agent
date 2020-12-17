@@ -13,4 +13,6 @@ val load : t -> int -> string -> unit Lwt.t
 
 val resolve : t -> src_pos -> (pc * src_pos) option Lwt.t
 
+val lookup_event : t -> pc -> Instruct.debug_event
+
 val sources : t -> string list Lwt.t

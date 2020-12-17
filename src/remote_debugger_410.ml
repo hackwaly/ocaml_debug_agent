@@ -114,7 +114,16 @@ let up_frame conn stacksize =
   Log.debug (fun m -> m "up_frame stacksize:%d" stacksize);%lwt
   Lwt_io.write_char conn.out 'U';%lwt
   Lwt_io.BE.write_int conn.out stacksize;%lwt
-  Log.debug (fun m -> m "set_frame return")
+  let%lwt stack_pos = Lwt_io.BE.read_int conn.in_ in
+  let%lwt res =
+    if stack_pos = -1 then Lwt.return None
+  else
+    let%lwt frag = Lwt_io.BE.read_int conn.in_ in
+    let%lwt pos = Lwt_io.BE.read_int conn.in_ in
+    Lwt.return (Some (stack_pos, {frag; pos}))
+  in
+  Log.debug (fun m -> m "set_frame return %s" ([%show: (int * pc) option] res));%lwt
+  Lwt.return res
 
 let set_trap_barrier conn pos =
   Log.debug (fun m -> m "set_trap_barrier pos:%d" pos);%lwt

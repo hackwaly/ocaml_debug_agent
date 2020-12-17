@@ -61,7 +61,7 @@ module type REMOTE_DEBUGGER = sig
 
   val set_frame : conn -> int -> unit Lwt.t
 
-  val up_frame : conn -> int -> unit Lwt.t
+  val up_frame : conn -> int -> (int * pc) option Lwt.t
 
   val set_trap_barrier : conn -> int -> unit Lwt.t
 

@@ -159,6 +159,9 @@ let cnum_of_event ev = (lexing_pos_of_event ev).Lexing.pos_cnum
 
 let change_event t = t.change_e
 
+let lookup_event t pc =
+  Hashtbl.find t.event_by_pc pc
+
 let load t frag path =
   let%lwt ic = Lwt_io.open_file ~mode:Lwt_io.input path in
   (let%lwt toc = read_toc ic in
