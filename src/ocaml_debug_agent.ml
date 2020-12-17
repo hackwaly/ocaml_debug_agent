@@ -69,7 +69,11 @@ let start opts =
     let rec run_slice () =
       let%lwt report = Rdbg.go conn opts.time_slice in
       match report.rep_type with
-      | Exited | Breakpoint | Uncaught_exc -> Lwt.return report
+      | Breakpoint ->
+          if%lwt Breakpoints.should_pause breakpoints report.rep_program_pointer
+          then Lwt.return report
+          else run_slice ()
+      | Exited | Uncaught_exc -> Lwt.return report
       | Event -> if !pause_flag then Lwt.return report else run_slice ()
       | _ -> run_slice ()
     in

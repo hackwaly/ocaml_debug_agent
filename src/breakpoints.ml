@@ -29,38 +29,36 @@ let set_breakpoint t b =
 let remove_breakpoint t b =
   Hashtbl.remove t.breakpoint_by_pc b.pc;
   Hashtbl.replace t.commit_queue b.pc ();
+  b.set_active false;
   Lwt.return ()
+
+(* TODO: Conditional breakpoint *)
+let should_pause t pc =
+  Lwt.return (Hashtbl.mem t.breakpoint_by_pc pc)
 
 let commit t (module Rdbg : REMOTE_DEBUGGER) conn =
   let commit_one pc =
     let removed = not (Hashtbl.mem t.breakpoint_by_pc pc) in
     let committed = Hashtbl.mem t.committed pc in
-    Log.debug (fun m -> m "pc: (%d,%d), removed: %b, committed: %b" pc.frag pc.pos removed committed);%lwt
+    Log.debug (fun m ->
+        m "pc: (%d,%d), removed: %b, committed: %b" pc.frag pc.pos removed
+          committed);%lwt
     match (removed, committed) with
     | true, true ->
         Rdbg.reset_instr conn pc;%lwt
         Rdbg.set_event conn pc;%lwt
-        Log.debug (fun m -> m "breakpoints commit 6");%lwt
-        let bp = Hashtbl.find t.breakpoint_by_pc pc in
-        Log.debug (fun m -> m "breakpoints commit 2");%lwt
-        bp.set_active false;
-        Log.debug (fun m -> m "breakpoints commit 3");%lwt
         Hashtbl.remove t.committed pc |> Lwt.return
     | false, false ->
         Rdbg.reset_instr conn pc;%lwt
         Rdbg.set_breakpoint conn pc;%lwt
-        Log.debug (fun m -> m "breakpoints commit 7");%lwt
         let bp = Hashtbl.find t.breakpoint_by_pc pc in
-        Log.debug (fun m -> m "breakpoints commit 4");%lwt
         bp.set_active true;
-        Log.debug (fun m -> m "breakpoints commit 5");%lwt
         Hashtbl.replace t.committed pc () |> Lwt.return
     | _ -> Lwt.return ()
   in
   Log.debug (fun m -> m "breakpoints commit start");%lwt
   t.commit_queue |> Hashtbl.to_seq_keys |> List.of_seq
   |> Lwt_list.iter_s commit_one;%lwt
-  Log.debug (fun m -> m "breakpoints commit 1");%lwt
   Hashtbl.reset t.commit_queue;
   Log.debug (fun m -> m "breakpoints commit start");%lwt
   Lwt.return ()
