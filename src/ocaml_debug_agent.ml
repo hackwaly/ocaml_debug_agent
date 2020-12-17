@@ -130,7 +130,8 @@ let set_breakpoint agent bp =
   agent.wake_up ()
 
 let remove_breakpoint agent bp =
-  Breakpoints.remove_breakpoint agent.breakpoints bp
+  Breakpoints.remove_breakpoint agent.breakpoints bp;%lwt
+  agent.wake_up ()
 
 let terminate agent =
   Lwt.cancel agent.loop_promise;
