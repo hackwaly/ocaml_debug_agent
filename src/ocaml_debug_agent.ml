@@ -42,15 +42,16 @@ type stack_frame = {
   debug_event : Instruct.debug_event;
 }
 
+type action = Wake_up | Continue | Pause
+
 type t = {
   rdbg : (module REMOTE_DEBUGGER);
   conn : conn;
   symbols : Symbols.t;
   loop_promise : unit Lwt.t;
   breakpoints : Breakpoints.t;
-  set_pause_flag : bool -> unit;
   status_s : status React.S.t;
-  wake_up : unit -> unit Lwt.t;
+  wake_up : action -> unit Lwt.t;
   push_pending : (unit -> unit Lwt.t) -> unit;
 }
 
@@ -71,12 +72,11 @@ let start opts =
   let push_pending f = pendings := f :: !pendings in
   let status_s, set_status = React.S.create Entrypoint in
   let pause_flag = ref true in
-  let set_pause_flag v = pause_flag := v in
-  let wake_up_mvar = Lwt_mvar.create () in
-  let wake_up () =
+  let wake_up_mvar = Lwt_mvar.create_empty () in
+  let wake_up action =
     Log.debug (fun m -> m "wake up");%lwt
     Lwt_mvar.take_available wake_up_mvar |> ignore;
-    Lwt_mvar.put wake_up_mvar ()
+    Lwt_mvar.put wake_up_mvar action
   in
   let loop () =
     let commit () =
@@ -104,14 +104,21 @@ let start opts =
       commit ();%lwt
       Log.debug (fun m -> m "commit end");%lwt
       Log.debug (fun m -> m "sleep");%lwt
-      if !pause_flag then Lwt_mvar.take wake_up_mvar else Lwt.return ();%lwt
+      ( match%lwt Lwt_mvar.take wake_up_mvar with
+      | Continue ->
+        pause_flag := false;
+          Lwt.return ()
+      | Pause ->
+        pause_flag := true;
+          Lwt.return ()
+      | Wake_up -> Lwt.return () );%lwt
       Log.debug (fun m -> m "waked up");%lwt
       if not !pause_flag then (
         set_status Running;
         Log.debug (fun m -> m "run_slice start");%lwt
         let%lwt report = run_slice () in
         Log.debug (fun m -> m "run_slice end");%lwt
-        set_pause_flag true;
+        pause_flag := true;
         match report.rep_type with
         | Exited ->
             Lwt.pause ();%lwt
@@ -138,7 +145,6 @@ let start opts =
       symbols;
       loop_promise;
       breakpoints;
-      set_pause_flag;
       wake_up;
       status_s;
       push_pending;
@@ -148,7 +154,7 @@ let lexing_pos_of_debug_event = Symbols.lexing_pos_of_debug_event
 
 let push_pending agent f =
   agent.push_pending f;
-  agent.wake_up ()
+  agent.wake_up Wake_up
 
 let resolve agent src_pos = Symbols.resolve agent.symbols src_pos
 
@@ -158,7 +164,8 @@ let symbols_change_event agent = Symbols.change_event agent.symbols
 
 let module_info_list agent = Symbols.module_info_list agent.symbols
 
-let find_module_info_by_src_pos agent = Symbols.find_module_info_by_src_pos agent.symbols
+let find_module_info_by_src_pos agent =
+  Symbols.find_module_info_by_src_pos agent.symbols
 
 let find_module_info_by_id agent = Symbols.find_module_info_by_id agent.symbols
 
@@ -201,11 +208,11 @@ let stack_trace agent =
 
 let set_breakpoint agent bp =
   Breakpoints.set_breakpoint agent.breakpoints bp;%lwt
-  agent.wake_up ()
+  agent.wake_up Wake_up
 
 let remove_breakpoint agent bp =
   Breakpoints.remove_breakpoint agent.breakpoints bp;%lwt
-  agent.wake_up ()
+  agent.wake_up Wake_up
 
 let check_breakpoint agent pc =
   Breakpoints.check_breakpoint agent.breakpoints pc
@@ -215,12 +222,10 @@ let terminate agent =
   Lwt.return ()
 
 let continue agent =
-  agent.set_pause_flag false;
-  agent.wake_up ()
+  agent.wake_up Continue
 
 let pause agent =
-  agent.set_pause_flag true;
-  Lwt.return ()
+  agent.wake_up Pause
 
 let next agent =
   ignore agent;
