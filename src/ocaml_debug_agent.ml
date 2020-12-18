@@ -42,7 +42,7 @@ type stack_frame = {
   debug_event : Instruct.debug_event;
 }
 
-type action = Wake_up | Continue | Pause
+type action = Wake_up | Continue | Pause | Step_in
 
 type t = {
   rdbg : (module REMOTE_DEBUGGER);
@@ -77,14 +77,14 @@ let start opts =
     Lwt_mvar.take_available action_mvar |> ignore;
     Lwt_mvar.put action_mvar action
   in
-  let yield () =
-    Log.debug (fun m -> m "commit start");%lwt
+  let sync () =
+    Log.debug (fun m -> m "sync start");%lwt
     Symbols.commit symbols (module Rdbg) conn;%lwt
     let tasks = !pendings in
     pendings := [];
     tasks |> Lwt_list.iter_s (fun f -> f ());%lwt
     Breakpoints.commit breakpoints (module Rdbg) conn;%lwt
-    Log.debug (fun m -> m "commit end")
+    Log.debug (fun m -> m "sync end")
   in
   let get_status report =
     match report.rep_type with
@@ -104,13 +104,11 @@ let start opts =
     set_status Running;
     let rec go () =
       let%lwt report = Rdbg.go conn opts.time_slice in
-      yield ();%lwt
+      sync ();%lwt
       let action = Lwt_mvar.take_available action_mvar in
       match action with
       | Some Pause -> Lwt.return report
-      | Some Continue
-      | Some Wake_up
-      | None -> (
+      | _ -> (
         match report.rep_type with
         | Breakpoint ->
             let%lwt bp =
@@ -127,17 +125,32 @@ let start opts =
     if status = Exited then Lwt.fail Exit else Lwt.return ();%lwt
     Lwt.return ()
   in
+  let do_step_in () =
+    set_status Running;
+    let go () =
+      let%lwt report = Rdbg.go conn 1 in
+      sync ();%lwt
+      Lwt.return report
+    in
+    let%lwt report = go () in
+    let%lwt status = get_status report in
+    set_status status;
+    if status = Exited then Lwt.fail Exit else Lwt.return ();%lwt
+    Lwt.return ()
+  in
   let execute () =
     match%lwt Lwt_mvar.take action_mvar with
     | Continue ->
       do_continue ()
+    | Step_in ->
+      do_step_in ()
     | Pause
     | Wake_up -> Lwt.return ()
   in
   let loop () =
     try%lwt
       while%lwt true do
-        yield ();%lwt
+        sync ();%lwt
         sleep ();%lwt
         execute ()
       done
@@ -235,9 +248,7 @@ let next agent =
   ignore agent;
   Lwt.return ()
 
-let step_in agent =
-  ignore agent;
-  Lwt.return ()
+let step_in agent = agent.wake_up Step_in
 
 let step_out agent =
   ignore agent;
