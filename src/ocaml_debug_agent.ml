@@ -71,71 +71,77 @@ let start opts =
   let pendings = ref [] in
   let push_pending f = pendings := f :: !pendings in
   let status_s, set_status = React.S.create Entrypoint in
-  let pause_flag = ref true in
-  let wake_up_mvar = Lwt_mvar.create_empty () in
+  let action_mvar = Lwt_mvar.create_empty () in
   let wake_up action =
     Log.debug (fun m -> m "wake up");%lwt
-    Lwt_mvar.take_available wake_up_mvar |> ignore;
-    Lwt_mvar.put wake_up_mvar action
+    Lwt_mvar.take_available action_mvar |> ignore;
+    Lwt_mvar.put action_mvar action
+  in
+  let yield () =
+    Log.debug (fun m -> m "commit start");%lwt
+    Symbols.commit symbols (module Rdbg) conn;%lwt
+    let tasks = !pendings in
+    pendings := [];
+    tasks |> Lwt_list.iter_s (fun f -> f ());%lwt
+    Breakpoints.commit breakpoints (module Rdbg) conn;%lwt
+    Log.debug (fun m -> m "commit end")
+  in
+  let get_status report =
+    match report.rep_type with
+    | Exited -> Lwt.return Exited
+    | Breakpoint -> Lwt.return Breakpoint
+    | Uncaught_exc -> Lwt.return Uncaught_exc
+    | _ -> [%lwt assert false]
+  in
+  let sleep () =
+    Log.debug (fun m -> m "sleep");%lwt
+    (* Do we need mutex here? *)
+    let%lwt action = Lwt_mvar.take action_mvar in
+    Lwt_mvar.put action_mvar action;%lwt
+    Log.debug (fun m -> m "waked up")
+  in
+  let do_continue () =
+    set_status Running;
+    let rec go () =
+      let%lwt report = Rdbg.go conn opts.time_slice in
+      yield ();%lwt
+      let action = Lwt_mvar.take_available action_mvar in
+      match action with
+      | Some Pause -> Lwt.return report
+      | Some Continue
+      | Some Wake_up
+      | None -> (
+        match report.rep_type with
+        | Breakpoint ->
+            let%lwt bp =
+              Breakpoints.check_breakpoint breakpoints report.rep_program_pointer
+            in
+            if Option.is_some bp then Lwt.return report else go ()
+        | Exited | Uncaught_exc -> Lwt.return report
+        | _ -> go ()
+      )
+    in
+    let%lwt report = go () in
+    let%lwt status = get_status report in
+    if status = Exited then Lwt.fail Exit else Lwt.return ();%lwt
+    set_status status;
+    Lwt.return ()
+  in
+  let execute () =
+    match%lwt Lwt_mvar.take action_mvar with
+    | Continue ->
+      do_continue ()
+    | Pause
+    | Wake_up -> Lwt.return ()
   in
   let loop () =
-    let commit () =
-      Symbols.commit symbols (module Rdbg) conn;%lwt
-      let tasks = !pendings in
-      pendings := [];
-      tasks |> Lwt_list.iter_s (fun f -> f ());%lwt
-      Breakpoints.commit breakpoints (module Rdbg) conn
-    in
-    let rec run_slice () =
-      let%lwt report = Rdbg.go conn opts.time_slice in
-      match report.rep_type with
-      | Breakpoint ->
-          let%lwt bp =
-            Breakpoints.check_breakpoint breakpoints report.rep_program_pointer
-          in
-          if Option.is_some bp then Lwt.return report else run_slice ()
-      | Exited | Uncaught_exc -> Lwt.return report
-      | Event -> if !pause_flag then Lwt.return report else run_slice ()
-      | _ -> run_slice ()
-    in
-    let break = ref false in
-    while%lwt not !break do
-      Log.debug (fun m -> m "commit start");%lwt
-      commit ();%lwt
-      Log.debug (fun m -> m "commit end");%lwt
-      Log.debug (fun m -> m "sleep");%lwt
-      ( match%lwt Lwt_mvar.take wake_up_mvar with
-      | Continue ->
-        pause_flag := false;
-          Lwt.return ()
-      | Pause ->
-        pause_flag := true;
-          Lwt.return ()
-      | Wake_up -> Lwt.return () );%lwt
-      Log.debug (fun m -> m "waked up");%lwt
-      if not !pause_flag then (
-        set_status Running;
-        Log.debug (fun m -> m "run_slice start");%lwt
-        let%lwt report = run_slice () in
-        Log.debug (fun m -> m "run_slice end");%lwt
-        pause_flag := true;
-        match report.rep_type with
-        | Exited ->
-            Lwt.pause ();%lwt
-            set_status Exited;
-            break := true;
-            Lwt.return ()
-        | Breakpoint | Uncaught_exc ->
-            Lwt.pause ();%lwt
-            set_status
-              ( match report.rep_type with
-              | Breakpoint -> Breakpoint
-              | Uncaught_exc -> Uncaught_exc
-              | _ -> assert false );
-            Lwt.return ()
-        | _ -> [%lwt assert false] )
-      else Lwt.return ()
-    done
+    try%lwt
+      while%lwt true do
+        yield ();%lwt
+        sleep ();%lwt
+        execute ()
+      done
+    with Exit -> Lwt.return ()
   in
   let loop_promise = loop () in
   Lwt.return
@@ -221,11 +227,9 @@ let terminate agent =
   Lwt.cancel agent.loop_promise;
   Lwt.return ()
 
-let continue agent =
-  agent.wake_up Continue
+let continue agent = agent.wake_up Continue
 
-let pause agent =
-  agent.wake_up Pause
+let pause agent = agent.wake_up Pause
 
 let next agent =
   ignore agent;
