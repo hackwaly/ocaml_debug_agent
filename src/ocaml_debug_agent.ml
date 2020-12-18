@@ -125,7 +125,17 @@ let start opts =
     let go () =
       let%lwt report = Rdbg.go conn 1 in
       sync ();%lwt
-      Lwt.return (report, Step)
+      match report.rep_type with
+      | Breakpoint ->
+        let%lwt bp =
+          Breakpoints.check_breakpoint breakpoints
+            report.rep_program_pointer
+        in
+        if Option.is_some bp then Lwt.return (report, Breakpoint)
+        else Lwt.return (report, Step)
+      | Exited -> Lwt.fail Exit
+      | Uncaught_exc -> Lwt.return (report, Exception)
+      | _ -> Lwt.return (report, Step)
     in
     let%lwt _report, reason = go () in
     set_status (Stopped reason);
@@ -232,15 +242,33 @@ let terminate agent =
   Lwt.cancel agent.loop_promise;
   Lwt.return ()
 
-let continue agent = agent.wake_up Continue_act
+let continue agent =
+  match agent.status_s |> React.S.value with
+  | Running
+  | Exited -> Lwt.return ()
+  | Stopped _ -> (
+    agent.wake_up Continue_act
+  )
 
-let pause agent = agent.wake_up Pause_act
+let pause agent =
+  match agent.status_s |> React.S.value with
+  | Running -> (
+    agent.wake_up Pause_act
+  )
+  | Exited
+  | Stopped _ -> Lwt.return ()
 
 let next agent =
   ignore agent;
   Lwt.return ()
 
-let step_in agent = agent.wake_up Step_in_act
+let step_in agent =
+  match agent.status_s |> React.S.value with
+  | Running
+  | Exited -> Lwt.return ()
+  | Stopped _ -> (
+    agent.wake_up Step_in_act
+  )
 
 let step_out agent =
   ignore agent;
