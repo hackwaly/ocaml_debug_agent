@@ -32,7 +32,11 @@ module Breakpoint = Breakpoint
 
 type breakpoint = Breakpoint.t
 
-type status = Running | Entrypoint | Breakpoint | Uncaught_exc | Exited
+type stopped_reason =
+  | Entry | Step | Pause | Breakpoint | Exception | Exited
+[@@deriving show]
+
+type status = Running | Stopped of stopped_reason | Exited
 [@@deriving show]
 
 type stack_frame = {
@@ -42,7 +46,7 @@ type stack_frame = {
   debug_event : Instruct.debug_event;
 }
 
-type action = Wake_up | Continue | Pause | Step_in
+type action = Wake_up_act | Continue_act | Pause_act | Step_in_act
 
 type t = {
   rdbg : (module REMOTE_DEBUGGER);
@@ -70,7 +74,7 @@ let start opts =
   Symbols.load symbols 0 opts.symbols_file;%lwt
   let pendings = ref [] in
   let push_pending f = pendings := f :: !pendings in
-  let status_s, set_status = React.S.create Entrypoint in
+  let status_s, set_status = React.S.create (Stopped Entry) in
   let action_mvar = Lwt_mvar.create_empty () in
   let wake_up action =
     Log.debug (fun m -> m "wake up");%lwt
@@ -86,13 +90,6 @@ let start opts =
     Breakpoints.commit breakpoints (module Rdbg) conn;%lwt
     Log.debug (fun m -> m "sync end")
   in
-  let get_status report =
-    match report.rep_type with
-    | Exited -> Lwt.return Exited
-    | Breakpoint -> Lwt.return Breakpoint
-    | Uncaught_exc -> Lwt.return Uncaught_exc
-    | _ -> [%lwt assert false]
-  in
   let sleep () =
     Log.debug (fun m -> m "sleep");%lwt
     (* Do we need mutex here? *)
@@ -107,22 +104,21 @@ let start opts =
       sync ();%lwt
       let action = Lwt_mvar.take_available action_mvar in
       match action with
-      | Some Pause -> Lwt.return report
+      | Some Pause_act -> Lwt.return (report, Pause)
       | _ -> (
         match report.rep_type with
         | Breakpoint ->
             let%lwt bp =
               Breakpoints.check_breakpoint breakpoints report.rep_program_pointer
             in
-            if Option.is_some bp then Lwt.return report else go ()
-        | Exited | Uncaught_exc -> Lwt.return report
+            if Option.is_some bp then Lwt.return (report, Breakpoint) else go ()
+        | Exited -> Lwt.fail Exit
+        | Uncaught_exc -> Lwt.return (report, Exception)
         | _ -> go ()
       )
     in
-    let%lwt report = go () in
-    let%lwt status = get_status report in
-    set_status status;
-    if status = Exited then Lwt.fail Exit else Lwt.return ();%lwt
+    let%lwt (_report, reason) = go () in
+    set_status (Stopped reason);
     Lwt.return ()
   in
   let do_step_in () =
@@ -130,22 +126,20 @@ let start opts =
     let go () =
       let%lwt report = Rdbg.go conn 1 in
       sync ();%lwt
-      Lwt.return report
+      Lwt.return (report, Step)
     in
-    let%lwt report = go () in
-    let%lwt status = get_status report in
-    set_status status;
-    if status = Exited then Lwt.fail Exit else Lwt.return ();%lwt
+    let%lwt (_report, reason) = go () in
+    set_status (Stopped reason);
     Lwt.return ()
   in
   let execute () =
     match%lwt Lwt_mvar.take action_mvar with
-    | Continue ->
+    | Continue_act ->
       do_continue ()
-    | Step_in ->
+    | Step_in_act ->
       do_step_in ()
-    | Pause
-    | Wake_up -> Lwt.return ()
+    | Pause_act
+    | Wake_up_act -> Lwt.return ()
   in
   let loop () =
     try%lwt
@@ -173,7 +167,7 @@ let lexing_pos_of_debug_event = Symbols.lexing_pos_of_debug_event
 
 let push_pending agent f =
   agent.push_pending f;
-  agent.wake_up Wake_up
+  agent.wake_up Wake_up_act
 
 let resolve agent src_pos = Symbols.resolve agent.symbols src_pos
 
@@ -191,7 +185,7 @@ let find_module_info_by_id agent = Symbols.find_module_info_by_id agent.symbols
 let stack_trace agent =
   match agent.status_s |> React.S.value with
   | Running -> [%lwt assert false]
-  | Entrypoint -> Lwt.return []
+  | Stopped Entry -> Lwt.return []
   | _ ->
       let promise, resolver = Lwt.task () in
       push_pending agent (fun () ->
@@ -227,11 +221,11 @@ let stack_trace agent =
 
 let set_breakpoint agent bp =
   Breakpoints.set_breakpoint agent.breakpoints bp;%lwt
-  agent.wake_up Wake_up
+  agent.wake_up Wake_up_act
 
 let remove_breakpoint agent bp =
   Breakpoints.remove_breakpoint agent.breakpoints bp;%lwt
-  agent.wake_up Wake_up
+  agent.wake_up Wake_up_act
 
 let check_breakpoint agent pc =
   Breakpoints.check_breakpoint agent.breakpoints pc
@@ -240,15 +234,15 @@ let terminate agent =
   Lwt.cancel agent.loop_promise;
   Lwt.return ()
 
-let continue agent = agent.wake_up Continue
+let continue agent = agent.wake_up Continue_act
 
-let pause agent = agent.wake_up Pause
+let pause agent = agent.wake_up Pause_act
 
 let next agent =
   ignore agent;
   Lwt.return ()
 
-let step_in agent = agent.wake_up Step_in
+let step_in agent = agent.wake_up Step_in_act
 
 let step_out agent =
   ignore agent;

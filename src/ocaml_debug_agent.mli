@@ -16,7 +16,11 @@ module Breakpoint = Breakpoint
 
 type breakpoint = Breakpoint.t
 
-type status = Running | Entrypoint | Breakpoint | Uncaught_exc | Exited
+type stopped_reason =
+  | Entry | Step | Pause | Breakpoint | Exception | Exited
+[@@deriving show]
+
+type status = Running | Stopped of stopped_reason | Exited
 [@@deriving show]
 
 type stack_frame = {
