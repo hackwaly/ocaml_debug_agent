@@ -17,4 +17,4 @@ val remove_breakpoint : t -> breakpoint -> unit Lwt.t
 
 val check_breakpoint : t -> pc -> breakpoint option Lwt.t
 
-val commit : t -> (module REMOTE_DEBUGGER) -> conn -> unit Lwt.t
+val commit : t -> (module REMOTE_DEBUGGER) -> unit Lwt.t

@@ -69,12 +69,12 @@ let make ?(derive_source_paths = default_derive_source_paths) () =
     load_source;
   }
 
-let commit t (module Rdbg : REMOTE_DEBUGGER) conn =
+let commit t (module Rdbg : REMOTE_DEBUGGER) =
   let commit_one pc =
     let committed = Hashtbl.mem t.committed pc in
     if%lwt Lwt.return (not committed) then (
       Hashtbl.replace t.committed pc ();
-      Rdbg.set_event conn pc )
+      Rdbg.set_event pc )
   in
   Log.debug (fun m -> m "symbols commit start");%lwt
   t.commit_queue |> Hashtbl.to_seq_keys |> List.of_seq

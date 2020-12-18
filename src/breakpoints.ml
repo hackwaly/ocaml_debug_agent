@@ -37,7 +37,7 @@ let remove_breakpoint t b =
 let check_breakpoint t pc =
   Lwt.return (Hashtbl.find_opt t.breakpoint_by_pc pc)
 
-let commit t (module Rdbg : REMOTE_DEBUGGER) conn =
+let commit t (module Rdbg : REMOTE_DEBUGGER) =
   let commit_one pc =
     let removed = not (Hashtbl.mem t.breakpoint_by_pc pc) in
     let committed = Hashtbl.mem t.committed pc in
@@ -46,12 +46,12 @@ let commit t (module Rdbg : REMOTE_DEBUGGER) conn =
           committed);%lwt
     match (removed, committed) with
     | true, true ->
-        Rdbg.reset_instr conn pc;%lwt
-        Rdbg.set_event conn pc;%lwt
+        Rdbg.reset_instr pc;%lwt
+        Rdbg.set_event pc;%lwt
         Hashtbl.remove t.committed pc |> Lwt.return
     | false, false ->
-        Rdbg.reset_instr conn pc;%lwt
-        Rdbg.set_breakpoint conn pc;%lwt
+        Rdbg.reset_instr pc;%lwt
+        Rdbg.set_breakpoint pc;%lwt
         let bp = Hashtbl.find t.breakpoint_by_pc pc in
         bp.set_active true;
         Hashtbl.replace t.committed pc () |> Lwt.return

@@ -1,3 +1,3 @@
 open Types
 
-include REMOTE_DEBUGGER
+val attach : conn -> (module REMOTE_DEBUGGER)

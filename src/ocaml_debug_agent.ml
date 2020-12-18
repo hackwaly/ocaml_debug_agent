@@ -48,7 +48,6 @@ type action = Wake_up_act | Continue_act | Pause_act | Step_in_act
 
 type t = {
   rdbg : (module REMOTE_DEBUGGER);
-  conn : conn;
   symbols : Symbols.t;
   loop_promise : unit Lwt.t;
   breakpoints : Breakpoints.t;
@@ -58,16 +57,16 @@ type t = {
 }
 
 let start opts =
+  let conn = opts.debug_connnection in
   let rdbg =
     match opts.remote_debugger_version with
     | OCaml_400 -> assert false
-    | OCaml_410 -> (module Remote_debugger_410 : REMOTE_DEBUGGER)
+    | OCaml_410 -> Remote_debugger_410.attach conn
   in
   let (module Rdbg) = rdbg in
-  let conn = opts.debug_connnection in
   let symbols = Symbols.make () in
   let breakpoints = Breakpoints.make () in
-  let%lwt pid = Rdbg.get_pid conn in
+  let%lwt pid = Rdbg.get_pid () in
   ignore pid;
   Symbols.load symbols 0 opts.symbols_file;%lwt
   let pendings = ref [] in
@@ -81,11 +80,11 @@ let start opts =
   in
   let sync () =
     Log.debug (fun m -> m "sync start");%lwt
-    Symbols.commit symbols (module Rdbg) conn;%lwt
+    Symbols.commit symbols (module Rdbg);%lwt
     let tasks = !pendings in
     pendings := [];
     tasks |> Lwt_list.iter_s (fun f -> f ());%lwt
-    Breakpoints.commit breakpoints (module Rdbg) conn;%lwt
+    Breakpoints.commit breakpoints (module Rdbg);%lwt
     Log.debug (fun m -> m "sync end")
   in
   let sleep () =
@@ -98,7 +97,7 @@ let start opts =
   let do_continue () =
     set_status Running;
     let rec go () =
-      let%lwt report = Rdbg.go conn opts.time_slice in
+      let%lwt report = Rdbg.go opts.time_slice in
       sync ();%lwt
       let action = Lwt_mvar.take_available action_mvar in
       match action with
@@ -123,16 +122,15 @@ let start opts =
   let do_step_in () =
     set_status Running;
     let go () =
-      let%lwt report = Rdbg.go conn 1 in
+      let%lwt report = Rdbg.go 1 in
       sync ();%lwt
       match report.rep_type with
       | Breakpoint ->
-        let%lwt bp =
-          Breakpoints.check_breakpoint breakpoints
-            report.rep_program_pointer
-        in
-        if Option.is_some bp then Lwt.return (report, Breakpoint)
-        else Lwt.return (report, Step)
+          let%lwt bp =
+            Breakpoints.check_breakpoint breakpoints report.rep_program_pointer
+          in
+          if Option.is_some bp then Lwt.return (report, Breakpoint)
+          else Lwt.return (report, Step)
       | Exited -> Lwt.fail Exit
       | Uncaught_exc -> Lwt.return (report, Exception)
       | _ -> Lwt.return (report, Step)
@@ -162,7 +160,6 @@ let start opts =
   Lwt.return
     {
       rdbg;
-      conn;
       symbols;
       loop_promise;
       breakpoints;
@@ -198,8 +195,7 @@ let stack_trace agent =
       let promise, resolver = Lwt.task () in
       push_pending agent (fun () ->
           let (module Rdbg) = agent.rdbg in
-          let conn = agent.conn in
-          let%lwt curr_fr_sp, _ = Rdbg.get_frame conn in
+          let%lwt curr_fr_sp, _ = Rdbg.get_frame () in
           let make_frame index sp pc =
             {
               index;
@@ -210,13 +206,13 @@ let stack_trace agent =
           in
           let rec walk_up index stacksize frames =
             let index = index + 1 in
-            match%lwt Rdbg.up_frame conn stacksize with
+            match%lwt Rdbg.up_frame stacksize with
             | Some (sp, pc) ->
                 let frame = make_frame index sp pc in
                 walk_up index frame.debug_event.ev_stacksize (frame :: frames)
             | None -> Lwt.return frames
           in
-          (let%lwt sp, pc = Rdbg.initial_frame conn in
+          (let%lwt sp, pc = Rdbg.initial_frame () in
            let intial_frame = make_frame 0 sp pc in
            let%lwt frames =
              walk_up 0 intial_frame.debug_event.ev_stacksize [ intial_frame ]
@@ -224,7 +220,7 @@ let stack_trace agent =
            let frames = List.rev frames in
            Lwt.wakeup_later resolver frames;
            Lwt.return ())
-            [%finally Rdbg.set_frame conn curr_fr_sp]);%lwt
+            [%finally Rdbg.set_frame curr_fr_sp]);%lwt
       promise
 
 let set_breakpoint agent bp =
@@ -244,19 +240,13 @@ let terminate agent =
 
 let continue agent =
   match agent.status_s |> React.S.value with
-  | Running
-  | Exited -> Lwt.return ()
-  | Stopped _ -> (
-    agent.wake_up Continue_act
-  )
+  | Running | Exited -> Lwt.return ()
+  | Stopped _ -> agent.wake_up Continue_act
 
 let pause agent =
   match agent.status_s |> React.S.value with
-  | Running -> (
-    agent.wake_up Pause_act
-  )
-  | Exited
-  | Stopped _ -> Lwt.return ()
+  | Running -> agent.wake_up Pause_act
+  | Exited | Stopped _ -> Lwt.return ()
 
 let next agent =
   ignore agent;
@@ -264,11 +254,8 @@ let next agent =
 
 let step_in agent =
   match agent.status_s |> React.S.value with
-  | Running
-  | Exited -> Lwt.return ()
-  | Stopped _ -> (
-    agent.wake_up Step_in_act
-  )
+  | Running | Exited -> Lwt.return ()
+  | Stopped _ -> agent.wake_up Step_in_act
 
 let step_out agent =
   ignore agent;
