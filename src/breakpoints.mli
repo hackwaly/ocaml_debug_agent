@@ -7,6 +7,15 @@ type breakpoint = {
   set_active : bool -> unit;
 }
 
+module Breakpoint : sig
+  type t = breakpoint
+
+  val id : t -> int
+
+  val make : id:int -> pc:pc -> unit -> t
+  val active_signal : t -> bool React.S.t
+end
+
 type t
 
 val make : unit -> t

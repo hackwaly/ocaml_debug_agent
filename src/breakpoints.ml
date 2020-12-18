@@ -9,6 +9,18 @@ type breakpoint = {
   set_active : bool -> unit;
 }
 
+module Breakpoint = struct
+  type t = breakpoint
+
+  let id t = t.id
+
+  let make ~id ~pc () =
+    let active_s, set_active = React.S.create false in
+    { id; pc; active_s; set_active }
+
+  let active_signal b = b.active_s
+end
+
 type t = {
   breakpoint_by_pc : (pc, breakpoint) Hashtbl.t;
   commit_queue : (pc, unit) Hashtbl.t;

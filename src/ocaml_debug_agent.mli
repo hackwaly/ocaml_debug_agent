@@ -12,9 +12,9 @@ type module_info = Symbols.module_info = {
   events : Instruct.debug_event array;
 }
 
-module Breakpoint = Breakpoint
+module Breakpoint = Breakpoints.Breakpoint
 
-type breakpoint = Breakpoint.t
+type breakpoint = Breakpoints.breakpoint
 
 type stopped_reason =
   | Entry | Step | Pause | Breakpoint | Exception
