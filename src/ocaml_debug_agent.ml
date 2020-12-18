@@ -32,12 +32,10 @@ module Breakpoint = Breakpoint
 
 type breakpoint = Breakpoint.t
 
-type stopped_reason =
-  | Entry | Step | Pause | Breakpoint | Exception | Exited
+type stopped_reason = Entry | Step | Pause | Breakpoint | Exception | Exited
 [@@deriving show]
 
-type status = Running | Stopped of stopped_reason | Exited
-[@@deriving show]
+type status = Running | Stopped of stopped_reason | Exited [@@deriving show]
 
 type stack_frame = {
   index : int;
@@ -106,18 +104,19 @@ let start opts =
       match action with
       | Some Pause_act -> Lwt.return (report, Pause)
       | _ -> (
-        match report.rep_type with
-        | Breakpoint ->
-            let%lwt bp =
-              Breakpoints.check_breakpoint breakpoints report.rep_program_pointer
-            in
-            if Option.is_some bp then Lwt.return (report, Breakpoint) else go ()
-        | Exited -> Lwt.fail Exit
-        | Uncaught_exc -> Lwt.return (report, Exception)
-        | _ -> go ()
-      )
+          match report.rep_type with
+          | Breakpoint ->
+              let%lwt bp =
+                Breakpoints.check_breakpoint breakpoints
+                  report.rep_program_pointer
+              in
+              if Option.is_some bp then Lwt.return (report, Breakpoint)
+              else go ()
+          | Exited -> Lwt.fail Exit
+          | Uncaught_exc -> Lwt.return (report, Exception)
+          | _ -> go () )
     in
-    let%lwt (_report, reason) = go () in
+    let%lwt _report, reason = go () in
     set_status (Stopped reason);
     Lwt.return ()
   in
@@ -128,18 +127,15 @@ let start opts =
       sync ();%lwt
       Lwt.return (report, Step)
     in
-    let%lwt (_report, reason) = go () in
+    let%lwt _report, reason = go () in
     set_status (Stopped reason);
     Lwt.return ()
   in
   let execute () =
     match%lwt Lwt_mvar.take action_mvar with
-    | Continue_act ->
-      do_continue ()
-    | Step_in_act ->
-      do_step_in ()
-    | Pause_act
-    | Wake_up_act -> Lwt.return ()
+    | Continue_act -> do_continue ()
+    | Step_in_act -> do_step_in ()
+    | Pause_act | Wake_up_act -> Lwt.return ()
   in
   let loop () =
     try%lwt
@@ -148,7 +144,9 @@ let start opts =
         sleep ();%lwt
         execute ()
       done
-    with Exit -> Lwt.return ()
+    with Exit ->
+      set_status Exited;
+      Lwt.return ()
   in
   let loop_promise = loop () in
   Lwt.return
