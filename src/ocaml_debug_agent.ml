@@ -32,7 +32,7 @@ module Breakpoint = Breakpoint
 
 type breakpoint = Breakpoint.t
 
-type stopped_reason = Entry | Step | Pause | Breakpoint | Exception | Exited
+type stopped_reason = Entry | Step | Pause | Breakpoint | Exception
 [@@deriving show]
 
 type status = Running | Stopped of stopped_reason | Exited [@@deriving show]
