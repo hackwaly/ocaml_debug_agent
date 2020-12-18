@@ -123,8 +123,8 @@ let start opts =
     in
     let%lwt report = go () in
     let%lwt status = get_status report in
-    if status = Exited then Lwt.fail Exit else Lwt.return ();%lwt
     set_status status;
+    if status = Exited then Lwt.fail Exit else Lwt.return ();%lwt
     Lwt.return ()
   in
   let execute () =
