@@ -16,11 +16,9 @@ module Breakpoint = Breakpoints.Breakpoint
 
 type breakpoint = Breakpoints.breakpoint
 
-type stopped_reason =
-  | Entry | Step | Pause | Breakpoint | Exception
-[@@deriving show]
+type stop_reason = Step | Pause | Breakpoint | Exception [@@deriving show]
 
-type status = Running | Stopped of stopped_reason | Exited
+type status = Entry | Running | Stopped of stop_reason | Exited
 [@@deriving show]
 
 type stack_frame = {

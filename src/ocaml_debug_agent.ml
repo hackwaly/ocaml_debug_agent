@@ -32,10 +32,10 @@ module Breakpoint = Breakpoints.Breakpoint
 
 type breakpoint = Breakpoints.breakpoint
 
-type stopped_reason = Entry | Step | Pause | Breakpoint | Exception
-[@@deriving show]
+type stop_reason = Step | Pause | Breakpoint | Exception [@@deriving show]
 
-type status = Running | Stopped of stopped_reason | Exited [@@deriving show]
+type status = Entry | Running | Stopped of stop_reason | Exited
+[@@deriving show]
 
 type stack_frame = {
   index : int;
@@ -71,7 +71,7 @@ let start opts =
   Symbols.load symbols 0 opts.symbols_file;%lwt
   let pendings = ref [] in
   let push_pending f = pendings := f :: !pendings in
-  let status_s, set_status = React.S.create (Stopped Entry) in
+  let status_s, set_status = React.S.create Entry in
   let action_mvar = Lwt_mvar.create_empty () in
   let wake_up action =
     Log.debug (fun m -> m "wake up");%lwt
@@ -190,8 +190,8 @@ let find_module_info_by_id agent = Symbols.find_module_info_by_id agent.symbols
 let stack_trace agent =
   match agent.status_s |> React.S.value with
   | Running -> [%lwt assert false]
-  | Stopped Entry -> Lwt.return []
-  | _ ->
+  | Entry | Exited -> Lwt.return []
+  | Stopped _ ->
       let promise, resolver = Lwt.task () in
       push_pending agent (fun () ->
           let (module Rdbg) = agent.rdbg in
@@ -241,12 +241,12 @@ let terminate agent =
 let continue agent =
   match agent.status_s |> React.S.value with
   | Running | Exited -> Lwt.return ()
-  | Stopped _ -> agent.wake_up Continue_act
+  | Entry | Stopped _ -> agent.wake_up Continue_act
 
 let pause agent =
   match agent.status_s |> React.S.value with
   | Running -> agent.wake_up Pause_act
-  | Exited | Stopped _ -> Lwt.return ()
+  | Entry | Exited | Stopped _ -> Lwt.return ()
 
 let next agent =
   ignore agent;
@@ -255,7 +255,7 @@ let next agent =
 let step_in agent =
   match agent.status_s |> React.S.value with
   | Running | Exited -> Lwt.return ()
-  | Stopped _ -> agent.wake_up Step_in_act
+  | Entry | Stopped _ -> agent.wake_up Step_in_act
 
 let step_out agent =
   ignore agent;
