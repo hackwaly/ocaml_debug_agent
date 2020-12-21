@@ -28,9 +28,7 @@ let load_source =
       let%lwt code = Lwt_io.read ic in
       let bols = ref [ 0 ] in
       for i = 0 to String.length code - 1 do
-        if code.[i] = '\n' then (
-          bols := (i + 1) :: !bols
-        )
+        if code.[i] = '\n' then bols := (i + 1) :: !bols
       done;
       let bols = !bols |> List.rev |> Array.of_list in
       Lwt.return (code, bols))
@@ -62,14 +60,11 @@ let create ?(derive_source_paths = default_derive_source_paths) () =
     derive_source_paths;
   }
 
-let to_seq_modules t =
-  t.module_by_id |> Hashtbl.to_seq_values
+let to_seq_modules t = t.module_by_id |> Hashtbl.to_seq_values
 
-let to_seq_events t =
-  t.event_by_pc |> Hashtbl.to_seq_values
+let to_seq_events t = t.event_by_pc |> Hashtbl.to_seq_values
 
-let did_commit_hook t =
-  t.did_commit_hook
+let did_commit_hook t = t.did_commit_hook
 
 let commit t (module Rdbg : Remote_debugger.S) conn =
   let commit_one pc =
@@ -207,8 +202,7 @@ let find_module_by_src_path t src_path =
   let%lwt digest = digest_of src_path in
   Hashtbl.find t.module_by_digest digest |> Lwt.return
 
-let find_module_by_id t id =
-  Hashtbl.find t.module_by_id id |> Lwt.return
+let find_module_by_id t id = Hashtbl.find t.module_by_id id |> Lwt.return
 
 let expand_to_equivalent_range code cnum =
   (* TODO: Support skip comments *)
@@ -228,8 +222,7 @@ let expand_to_equivalent_range code cnum =
     Lwt.return (l, r + 1)
   else Lwt.return (cnum, cnum)
 
-let find_event_by_pc t pc =
-  Hashtbl.find t.event_by_pc pc |> Lwt.return
+let find_event_by_pc t pc = Hashtbl.find t.event_by_pc pc |> Lwt.return
 
 let find_event_in_module mi ~line ~column =
   let find_event code events cnum =
@@ -244,7 +237,11 @@ let find_event_in_module mi ~line ~column =
       | `At i -> events.(i)
       | _ -> raise Not_found )
   in
-  let%lwt code, bols = load_source (mi.resolved_source |> Option.get) in
+  let%lwt code, bols =
+    load_source
+      ( try mi.resolved_source |> Option.get
+        with Invalid_argument _ -> raise Not_found )
+  in
   let bol = bols.(line - 1) in
   let cnum = bol + column in
   let%lwt ev = find_event code mi.events cnum in
