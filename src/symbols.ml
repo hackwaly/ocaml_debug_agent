@@ -62,81 +62,76 @@ let commit t (module Rdbg : Remote_debugger.S) conn =
   Log.debug (fun m -> m "symbols commit end");%lwt
   Lwt.return ()
 
-let read_toc ic =
-  let%lwt len = Lwt_io.length ic in
-  let pos_trailer = Int64.sub len (Int64.of_int 16) in
-  Lwt_io.set_position ic pos_trailer;%lwt
-  let%lwt num_sections = Lwt_io.BE.read_int ic in
-  let%lwt magic =
-    Lwt_util.read_to_string_exactly ic (String.length Config.exec_magic_number)
-  in
-  if%lwt Lwt.return (magic <> Config.exec_magic_number) then
-    Lwt.fail_invalid_arg "Bad magic";%lwt
-  let pos_toc = Int64.sub pos_trailer (Int64.of_int (8 * num_sections)) in
-  Lwt_io.set_position ic pos_toc;%lwt
-  let section_table = ref [] in
-  for%lwt i = 1 to num_sections do
-    let%lwt name = Lwt_util.read_to_string_exactly ic 4 in
-    let%lwt len = Lwt_io.BE.read_int ic in
-    section_table := (name, len) :: !section_table;
-    Lwt.return_unit
-  done;%lwt
-  Lwt.return (pos_toc, !section_table)
-
-let seek_section (pos, section_table) name =
-  let rec seek_sec pos = function
-    | [] -> raise Not_found
-    | (name', len) :: rest ->
-        let pos = Int64.sub pos (Int64.of_int len) in
-        if name' = name then pos else seek_sec pos rest
-  in
-  seek_sec pos section_table
-
-let relocate_event orig ev =
-  ev.Instruct.ev_pos <- orig + ev.Instruct.ev_pos;
-  match ev.ev_repr with Event_parent repr -> repr := ev.ev_pos | _ -> ()
-
-let partition_modules evl =
-  let rec partition_modules' ev evl =
-    match evl with
-    | [] -> ([ ev ], [])
-    | ev' :: evl ->
-        let evl, evll = partition_modules' ev' evl in
-        if ev.Instruct.ev_module = ev'.ev_module then (ev :: evl, evll)
-        else ([ ev ], evl :: evll)
-  in
-  match evl with
-  | [] -> []
-  | ev :: evl ->
-      let evl, evll = partition_modules' ev evl in
-      evl :: evll
-
-let read_eventlists toc ic =
-  let pos = seek_section toc "DBUG" in
-  Lwt_io.set_position ic pos;%lwt
-  let%lwt num_eventlists = Lwt_io.BE.read_int ic in
-  let eventlists = ref [] in
-  for%lwt i = 1 to num_eventlists do
-    let%lwt orig = Lwt_io.BE.read_int ic in
-    let%lwt evl = Lwt_io.read_value ic in
-    let evl = (evl : Instruct.debug_event list) in
-    List.iter (relocate_event orig) evl;
-    let%lwt dirs = Lwt_io.read_value ic in
-    let dirs = (dirs : string list) in
-    eventlists := { evl; dirs } :: !eventlists;
-    Lwt.return ()
-  done;%lwt
-  Lwt.return (List.rev !eventlists)
-
-let lexing_pos_of_debug_event ev =
-  match ev.Instruct.ev_kind with
-  | Event_before -> ev.ev_loc.Location.loc_start
-  | Event_after _ -> ev.ev_loc.Location.loc_end
-  | _ -> ev.ev_loc.Location.loc_start
-
-let cnum_of_event ev = (lexing_pos_of_debug_event ev).Lexing.pos_cnum
+let cnum_of_event ev = (Debug_event.lexing_position ev).Lexing.pos_cnum
 
 let load t frag path =
+  let read_toc ic =
+    let%lwt len = Lwt_io.length ic in
+    let pos_trailer = Int64.sub len (Int64.of_int 16) in
+    Lwt_io.set_position ic pos_trailer;%lwt
+    let%lwt num_sections = Lwt_io.BE.read_int ic in
+    let%lwt magic =
+      Lwt_util.read_to_string_exactly ic
+        (String.length Config.exec_magic_number)
+    in
+    if%lwt Lwt.return (magic <> Config.exec_magic_number) then
+      Lwt.fail_invalid_arg "Bad magic";%lwt
+    let pos_toc = Int64.sub pos_trailer (Int64.of_int (8 * num_sections)) in
+    Lwt_io.set_position ic pos_toc;%lwt
+    let section_table = ref [] in
+    for%lwt i = 1 to num_sections do
+      let%lwt name = Lwt_util.read_to_string_exactly ic 4 in
+      let%lwt len = Lwt_io.BE.read_int ic in
+      section_table := (name, len) :: !section_table;
+      Lwt.return_unit
+    done;%lwt
+    Lwt.return (pos_toc, !section_table)
+  in
+  let seek_section (pos, section_table) name =
+    let rec seek_sec pos = function
+      | [] -> raise Not_found
+      | (name', len) :: rest ->
+          let pos = Int64.sub pos (Int64.of_int len) in
+          if name' = name then pos else seek_sec pos rest
+    in
+    seek_sec pos section_table
+  in
+  let relocate_event orig ev =
+    ev.Instruct.ev_pos <- orig + ev.Instruct.ev_pos;
+    match ev.ev_repr with Event_parent repr -> repr := ev.ev_pos | _ -> ()
+  in
+  let partition_modules evl =
+    let rec partition_modules' ev evl =
+      match evl with
+      | [] -> ([ ev ], [])
+      | ev' :: evl ->
+          let evl, evll = partition_modules' ev' evl in
+          if ev.Instruct.ev_module = ev'.ev_module then (ev :: evl, evll)
+          else ([ ev ], evl :: evll)
+    in
+    match evl with
+    | [] -> []
+    | ev :: evl ->
+        let evl, evll = partition_modules' ev evl in
+        evl :: evll
+  in
+  let read_eventlists toc ic =
+    let pos = seek_section toc "DBUG" in
+    Lwt_io.set_position ic pos;%lwt
+    let%lwt num_eventlists = Lwt_io.BE.read_int ic in
+    let eventlists = ref [] in
+    for%lwt i = 1 to num_eventlists do
+      let%lwt orig = Lwt_io.BE.read_int ic in
+      let%lwt evl = Lwt_io.read_value ic in
+      let evl = (evl : Instruct.debug_event list) in
+      List.iter (relocate_event orig) evl;
+      let%lwt dirs = Lwt_io.read_value ic in
+      let dirs = (dirs : string list) in
+      eventlists := { evl; dirs } :: !eventlists;
+      Lwt.return ()
+    done;%lwt
+    Lwt.return (List.rev !eventlists)
+  in
   let%lwt ic = Lwt_io.open_file ~mode:Lwt_io.input path in
   (let%lwt toc = read_toc ic in
    let%lwt eventlists = read_eventlists toc ic in
@@ -154,11 +149,6 @@ let load t frag path =
                      Lwt.return (Some source_path)
                    with Not_found -> Lwt.return None
                  in
-                 let is_pseudo_event ev =
-                   match ev.Instruct.ev_kind with
-                   | Event_pseudo -> true
-                   | _ -> false
-                 in
                  evl
                  |> List.iter (fun ev ->
                         let pc = { frag; pos = ev.Instruct.ev_pos } in
@@ -166,7 +156,7 @@ let load t frag path =
                         Hashtbl.replace t.commit_queue pc ());
                  let events =
                    evl
-                   |> List.filter (fun ev -> not (is_pseudo_event ev))
+                   |> List.filter (fun ev -> not (Debug_event.is_pseudo ev))
                    |> Array.of_list
                  in
                  Array.fast_sort (Compare.by cnum_of_event) events;
