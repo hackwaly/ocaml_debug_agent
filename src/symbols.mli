@@ -9,12 +9,9 @@ type module_ = {
 
 type t
 
-val create :
-  ?derive_source_paths:(string -> string list -> string list Lwt.t) -> unit -> t
+val create : unit -> t
 
 val commit : t -> (module Remote_debugger.S) -> conn -> unit Lwt.t
-
-val did_commit_hook : t -> (t -> unit Lwt.t) ref
 
 val load : t -> int -> string -> unit Lwt.t
 

@@ -15,38 +15,32 @@ type t = {
   committed : (pc, unit) Hashtbl.t;
   module_by_id : (string, module_) Hashtbl.t;
   module_by_digest : (string, module_) Hashtbl.t;
-  did_commit_hook : (t -> unit Lwt.t) ref;
-  derive_source_paths : string -> string list -> string list Lwt.t;
 }
 
-let default_derive_source_paths mid dirs =
+let derive_source_paths ~id ~dirs =
   dirs |> List.to_seq
   |> Seq.flat_map (fun dir ->
          List.to_seq
            [
-             dir ^ "/" ^ String.uncapitalize_ascii mid ^ ".ml";
-             dir ^ "/" ^ String.uncapitalize_ascii mid ^ ".re";
-             dir ^ "/" ^ mid ^ ".ml";
-             dir ^ "/" ^ mid ^ ".re";
+             dir ^ "/" ^ String.uncapitalize_ascii id ^ ".ml";
+             dir ^ "/" ^ String.uncapitalize_ascii id ^ ".re";
+             dir ^ "/" ^ id ^ ".ml";
+             dir ^ "/" ^ id ^ ".re";
            ])
   |> List.of_seq |> Lwt.return
 
-let create ?(derive_source_paths = default_derive_source_paths) () =
+let create () =
   {
     event_by_pc = Hashtbl.create 0;
     commit_queue = Hashtbl.create 0;
     committed = Hashtbl.create 0;
-    did_commit_hook = ref (fun _ -> Lwt.return ());
     module_by_id = Hashtbl.create 0;
     module_by_digest = Hashtbl.create 0;
-    derive_source_paths;
   }
 
 let to_seq_modules t = t.module_by_id |> Hashtbl.to_seq_values
 
 let to_seq_events t = t.event_by_pc |> Hashtbl.to_seq_values
-
-let did_commit_hook t = t.did_commit_hook
 
 let commit t (module Rdbg : Remote_debugger.S) conn =
   let commit_one pc =
@@ -58,7 +52,6 @@ let commit t (module Rdbg : Remote_debugger.S) conn =
   Log.debug (fun m -> m "symbols commit start");%lwt
   t.commit_queue |> Hashtbl.to_seq_keys |> Lwt_util.iter_seq_s commit_one;%lwt
   Hashtbl.reset t.commit_queue;
-  t.did_commit_hook.contents t;%lwt
   Log.debug (fun m -> m "symbols commit end");%lwt
   Lwt.return ()
 
@@ -140,7 +133,7 @@ let load t frag path =
           partition_modules evl
           |> Lwt_list.iter_s (fun evl ->
                  let id = (List.hd evl).Instruct.ev_module in
-                 let%lwt source_paths = t.derive_source_paths id dirs in
+                 let%lwt source_paths = derive_source_paths ~id ~dirs in
                  let%lwt resolved_source =
                    try%lwt
                      let%lwt source_path =
