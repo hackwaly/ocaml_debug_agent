@@ -1,3 +1,9 @@
+let iter_seq_s f seq =
+  Seq.fold_left (fun prev_promise elt ->
+    let%lwt () = prev_promise in
+    f elt
+  ) (Lwt.return ()) seq
+
 let read_nativeint_be in_ =
   if Sys.word_size = 64 then
     let%lwt word = Lwt_io.BE.read_int64 in_ in

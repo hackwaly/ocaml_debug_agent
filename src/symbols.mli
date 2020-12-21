@@ -1,6 +1,6 @@
-open Types
+open Remote_debugger
 
-type module_info = {
+type module_ = {
   frag : int;
   id : string;
   resolved_source : string option;
@@ -9,23 +9,23 @@ type module_info = {
 
 type t
 
-val make :
+val create :
   ?derive_source_paths:(string -> string list -> string list Lwt.t) -> unit -> t
 
-val commit : t -> (module REMOTE_DEBUGGER) -> unit Lwt.t
+val commit : t -> (module Remote_debugger.S) -> conn -> unit Lwt.t
 
-val change_event : t -> unit React.E.t
+val did_commit_hook : t -> (t -> unit Lwt.t) ref
 
 val load : t -> int -> string -> unit Lwt.t
 
-val resolve : t -> src_pos -> (pc * src_pos) option Lwt.t
+val to_seq_modules : t -> module_ Seq.t
 
-val lookup_event : t -> pc -> Instruct.debug_event
+val to_seq_events : t -> Instruct.debug_event Seq.t
 
-val lexing_pos_of_debug_event : Instruct.debug_event -> Lexing.position
+val find_event_by_pc : t -> pc -> Instruct.debug_event Lwt.t
 
-val find_module_info_by_src_pos : t -> src_pos -> module_info Lwt.t
+val find_module_by_id : t -> string -> module_ Lwt.t
 
-val find_module_info_by_id : t -> string -> module_info Lwt.t
+val find_module_by_src_path : t -> string -> module_ Lwt.t
 
-val module_info_list : t -> module_info list Lwt.t
+val find_event_in_module : module_ -> line:int -> column:int -> Instruct.debug_event Lwt.t

@@ -1,6 +1,6 @@
-open Types
+open Remote_debugger
 
-type module_info = {
+type module_ = {
   frag : int;
   id : string;
   resolved_source : string option;
@@ -13,14 +13,31 @@ type t = {
   event_by_pc : (pc, Instruct.debug_event) Hashtbl.t;
   commit_queue : (pc, unit) Hashtbl.t;
   committed : (pc, unit) Hashtbl.t;
-  module_info_by_id : (string, module_info) Hashtbl.t;
-  module_info_by_digest : (string, module_info) Hashtbl.t;
-  change_e : unit React.E.t;
-  emit_change : unit -> unit;
+  module_by_id : (string, module_) Hashtbl.t;
+  module_by_digest : (string, module_) Hashtbl.t;
+  did_commit_hook : (t -> unit Lwt.t) ref;
   derive_source_paths : string -> string list -> string list Lwt.t;
-  get_digest : string -> string Lwt.t;
-  load_source : string -> (string * int array) Lwt.t;
 }
+
+let load_source =
+  let weight (content, _bols) = String.length content in
+  Lwt_util.memo ~weight
+    ~cap:(32 * 1024 * 1024)
+    (fun _rec source ->
+      let%lwt ic = Lwt_io.open_file ~mode:Lwt_io.input source in
+      let%lwt code = Lwt_io.read ic in
+      let bols = ref [ 0 ] in
+      for i = 0 to String.length code - 1 do
+        if code.[i] = '\n' then (
+          bols := (i + 1) :: !bols
+        )
+      done;
+      let bols = !bols |> List.rev |> Array.of_list in
+      Lwt.return (code, bols))
+
+let digest_of =
+  Lwt_util.memo ~weight:String.length ~cap:(64 * 1024) (fun _rec source ->
+      Lwt_preemptive.detach (fun source -> Digest.file source) source)
 
 let default_derive_source_paths mid dirs =
   dirs |> List.to_seq
@@ -34,51 +51,35 @@ let default_derive_source_paths mid dirs =
            ])
   |> List.of_seq |> Lwt.return
 
-let make ?(derive_source_paths = default_derive_source_paths) () =
-  let change_e, emit_change = React.E.create () in
-  let get_digest =
-    Lwt_util.memo ~weight:String.length ~cap:(64 * 1024) (fun _rec source ->
-        Lwt_preemptive.detach (fun source -> Digest.file source) source)
-  in
-  let load_source =
-    let weight (content, _bols) = String.length content in
-    Lwt_util.memo ~weight
-      ~cap:(32 * 1024 * 1024)
-      (fun _rec source ->
-        let%lwt ic = Lwt_io.open_file ~mode:Lwt_io.input source in
-        let%lwt code = Lwt_io.read ic in
-        let bols = ref [ 0 ] in
-        for i = 0 to String.length code - 1 do
-          if code.[i] = '\n' then (
-            bols := (i + 1) :: !bols
-          )
-        done;
-        let bols = !bols |> List.rev |> Array.of_list in
-        Lwt.return (code, bols))
-  in
+let create ?(derive_source_paths = default_derive_source_paths) () =
   {
     event_by_pc = Hashtbl.create 0;
     commit_queue = Hashtbl.create 0;
     committed = Hashtbl.create 0;
-    module_info_by_id = Hashtbl.create 0;
-    module_info_by_digest = Hashtbl.create 0;
-    change_e;
-    emit_change;
+    did_commit_hook = ref (fun _ -> Lwt.return ());
+    module_by_id = Hashtbl.create 0;
+    module_by_digest = Hashtbl.create 0;
     derive_source_paths;
-    get_digest;
-    load_source;
   }
 
-let commit t (module Rdbg : REMOTE_DEBUGGER) =
+let to_seq_modules t =
+  t.module_by_id |> Hashtbl.to_seq_values
+
+let to_seq_events t =
+  t.event_by_pc |> Hashtbl.to_seq_values
+
+let did_commit_hook t =
+  t.did_commit_hook
+
+let commit t (module Rdbg : Remote_debugger.S) conn =
   let commit_one pc =
     let committed = Hashtbl.mem t.committed pc in
     if%lwt Lwt.return (not committed) then (
       Hashtbl.replace t.committed pc ();
-      Rdbg.set_event pc )
+      Rdbg.set_event conn pc )
   in
   Log.debug (fun m -> m "symbols commit start");%lwt
-  t.commit_queue |> Hashtbl.to_seq_keys |> List.of_seq
-  |> Lwt_list.iter_s commit_one;%lwt
+  t.commit_queue |> Hashtbl.to_seq_keys |> Lwt_util.iter_seq_s commit_one;%lwt
   Hashtbl.reset t.commit_queue;
   Log.debug (fun m -> m "symbols commit end");%lwt
   Lwt.return ()
@@ -157,11 +158,6 @@ let lexing_pos_of_debug_event ev =
 
 let cnum_of_event ev = (lexing_pos_of_debug_event ev).Lexing.pos_cnum
 
-let change_event t = t.change_e
-
-let lookup_event t pc =
-  Hashtbl.find t.event_by_pc pc
-
 let load t frag path =
   let%lwt ic = Lwt_io.open_file ~mode:Lwt_io.input path in
   (let%lwt toc = read_toc ic in
@@ -196,28 +192,23 @@ let load t frag path =
                    |> Array.of_list
                  in
                  Array.fast_sort (Compare.by cnum_of_event) events;
-                 let module_info = { frag; id; resolved_source; events } in
-                 Hashtbl.replace t.module_info_by_id id module_info;
+                 let module_ = { frag; id; resolved_source; events } in
+                 Hashtbl.replace t.module_by_id id module_;
                  ( match resolved_source with
                  | Some source ->
-                     let%lwt digest = t.get_digest source in
-                     Hashtbl.replace t.module_info_by_digest digest module_info;
+                     let%lwt digest = digest_of source in
+                     Hashtbl.replace t.module_by_digest digest module_;
                      Lwt.return ()
                  | None -> Lwt.return () );%lwt
                  Lwt.return ())))
     [%finally Lwt_io.close ic]
 
-let src_pos_to_cnum t src_pos =
-  let%lwt _, bols = t.load_source src_pos.source in
-  let bol = bols.(src_pos.line - 1) in
-  Lwt.return (bol + src_pos.column)
+let find_module_by_src_path t src_path =
+  let%lwt digest = digest_of src_path in
+  Hashtbl.find t.module_by_digest digest |> Lwt.return
 
-let find_module_info_by_src_pos t src_pos =
-  let%lwt digest = t.get_digest src_pos.source in
-  Hashtbl.find t.module_info_by_digest digest |> Lwt.return
-
-let find_module_info_by_id t id =
-  Hashtbl.find t.module_info_by_id id |> Lwt.return
+let find_module_by_id t id =
+  Hashtbl.find t.module_by_id id |> Lwt.return
 
 let expand_to_equivalent_range code cnum =
   (* TODO: Support skip comments *)
@@ -237,35 +228,24 @@ let expand_to_equivalent_range code cnum =
     Lwt.return (l, r + 1)
   else Lwt.return (cnum, cnum)
 
-let find_event code events cnum =
-  let%lwt l, r = expand_to_equivalent_range code cnum in
-  assert (l <= r);
-  let cmp ev () =
-    let ev_cnum = cnum_of_event ev in
-    if ev_cnum < l then -1 else if ev_cnum > r then 1 else 0
-  in
-  Lwt.return
-    ( match events |> Array_util.bsearch ~cmp () with
-    | `At i -> events.(i)
-    | _ -> raise Not_found )
+let find_event_by_pc t pc =
+  Hashtbl.find t.event_by_pc pc |> Lwt.return
 
-let resolve t src_pos =
-  try%lwt
-    let%lwt mi = find_module_info_by_src_pos t src_pos in
-    let%lwt code, _ = t.load_source src_pos.source in
-    let%lwt cnum = src_pos_to_cnum t src_pos in
-    let%lwt ev = find_event code mi.events cnum in
-    let ev_pos = lexing_pos_of_debug_event ev in
-    let pc = { frag = mi.frag; pos = ev.Instruct.ev_pos } in
-    let src_pos' =
-      {
-        source = mi.resolved_source |> Option.value ~default:src_pos.source;
-        line = ev_pos.Lexing.pos_lnum;
-        column = ev_pos.Lexing.pos_cnum - ev_pos.Lexing.pos_bol;
-      }
+let find_event_in_module mi ~line ~column =
+  let find_event code events cnum =
+    let%lwt l, r = expand_to_equivalent_range code cnum in
+    assert (l <= r);
+    let cmp ev () =
+      let ev_cnum = cnum_of_event ev in
+      if ev_cnum < l then -1 else if ev_cnum > r then 1 else 0
     in
-    Lwt.return (Some (pc, src_pos'))
-  with Not_found -> Lwt.return None
-
-let module_info_list t =
-  t.module_info_by_id |> Hashtbl.to_seq_values |> List.of_seq |> Lwt.return
+    Lwt.return
+      ( match events |> Array_util.bsearch ~cmp () with
+      | `At i -> events.(i)
+      | _ -> raise Not_found )
+  in
+  let%lwt code, bols = load_source (mi.resolved_source |> Option.get) in
+  let bol = bols.(line - 1) in
+  let cnum = bol + column in
+  let%lwt ev = find_event code mi.events cnum in
+  Lwt.return ev
