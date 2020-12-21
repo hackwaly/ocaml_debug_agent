@@ -71,3 +71,21 @@ let memo (type k v) ?(hashed = (Hashtbl.hash, ( = ))) ?(weight = fun _ -> 1)
             Lwt.return v )
   in
   g
+
+let file_content_and_bols =
+  let weight (content, _bols) = String.length content in
+  memo ~weight
+    ~cap:(32 * 1024 * 1024)
+    (fun _rec source ->
+      let%lwt ic = Lwt_io.open_file ~mode:Lwt_io.input source in
+      let%lwt code = Lwt_io.read ic in
+      let bols = ref [ 0 ] in
+      for i = 0 to String.length code - 1 do
+        if code.[i] = '\n' then bols := (i + 1) :: !bols
+      done;
+      let bols = !bols |> List.rev |> Array.of_list in
+      Lwt.return (code, bols))
+
+let digest_file =
+  memo ~weight:String.length ~cap:(64 * 1024) (fun _rec path ->
+      Lwt_preemptive.detach (fun path -> Digest.file path) path)

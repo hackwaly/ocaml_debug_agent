@@ -19,24 +19,6 @@ type t = {
   derive_source_paths : string -> string list -> string list Lwt.t;
 }
 
-let load_source =
-  let weight (content, _bols) = String.length content in
-  Lwt_util.memo ~weight
-    ~cap:(32 * 1024 * 1024)
-    (fun _rec source ->
-      let%lwt ic = Lwt_io.open_file ~mode:Lwt_io.input source in
-      let%lwt code = Lwt_io.read ic in
-      let bols = ref [ 0 ] in
-      for i = 0 to String.length code - 1 do
-        if code.[i] = '\n' then bols := (i + 1) :: !bols
-      done;
-      let bols = !bols |> List.rev |> Array.of_list in
-      Lwt.return (code, bols))
-
-let digest_of =
-  Lwt_util.memo ~weight:String.length ~cap:(64 * 1024) (fun _rec source ->
-      Lwt_preemptive.detach (fun source -> Digest.file source) source)
-
 let default_derive_source_paths mid dirs =
   dirs |> List.to_seq
   |> Seq.flat_map (fun dir ->
@@ -191,18 +173,18 @@ let load t frag path =
                  Hashtbl.replace t.module_by_id id module_;
                  ( match resolved_source with
                  | Some source ->
-                     let%lwt digest = digest_of source in
+                     let%lwt digest = Lwt_util.digest_file source in
                      Hashtbl.replace t.module_by_digest digest module_;
                      Lwt.return ()
                  | None -> Lwt.return () );%lwt
                  Lwt.return ())))
     [%finally Lwt_io.close ic]
 
-let find_module_by_src_path t src_path =
-  let%lwt digest = digest_of src_path in
+let find_module_by_src t ~path =
+  let%lwt digest = Lwt_util.digest_file path in
   Hashtbl.find t.module_by_digest digest |> Lwt.return
 
-let find_module_by_id t id = Hashtbl.find t.module_by_id id |> Lwt.return
+let find_module t id = Hashtbl.find t.module_by_id id |> Lwt.return
 
 let expand_to_equivalent_range code cnum =
   (* TODO: Support skip comments *)
@@ -222,7 +204,7 @@ let expand_to_equivalent_range code cnum =
     Lwt.return (l, r + 1)
   else Lwt.return (cnum, cnum)
 
-let find_event_by_pc t pc = Hashtbl.find t.event_by_pc pc |> Lwt.return
+let find_event t pc = Hashtbl.find t.event_by_pc pc |> Lwt.return
 
 let find_event_in_module mi ~line ~column =
   let find_event code events cnum =
@@ -238,7 +220,7 @@ let find_event_in_module mi ~line ~column =
       | _ -> raise Not_found )
   in
   let%lwt code, bols =
-    load_source
+    Lwt_util.file_content_and_bols
       ( try mi.resolved_source |> Option.get
         with Invalid_argument _ -> raise Not_found )
   in
