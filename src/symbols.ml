@@ -58,6 +58,7 @@ let commit t (module Rdbg : Remote_debugger.S) conn =
   Log.debug (fun m -> m "symbols commit start");%lwt
   t.commit_queue |> Hashtbl.to_seq_keys |> Lwt_util.iter_seq_s commit_one;%lwt
   Hashtbl.reset t.commit_queue;
+  t.did_commit_hook.contents t;%lwt
   Log.debug (fun m -> m "symbols commit end");%lwt
   Lwt.return ()
 
