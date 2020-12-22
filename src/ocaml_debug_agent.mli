@@ -27,7 +27,16 @@ type stack_frame = {
   debug_event : Instruct.debug_event;
 }
 
+type module_ = Symbols.module_ = {
+  frag : int;
+  id : string;
+  resolved_source : string option;
+  events : Instruct.debug_event array;
+}
+
 val create : options -> t
+
+val to_seq_modules : t -> module_ Seq.t
 
 val status_signal : t -> status Lwt_react.S.t
 

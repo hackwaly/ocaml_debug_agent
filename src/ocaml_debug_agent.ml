@@ -41,6 +41,13 @@ type stack_frame = {
   debug_event : Instruct.debug_event;
 }
 
+type module_ = Symbols.module_ = {
+  frag : int;
+  id : string;
+  resolved_source : string option;
+  events : Instruct.debug_event array;
+}
+
 let create opts =
   let status_s, set_status = React.S.create Entry in
   let action_e, emit_action = Lwt_react.E.create () in
@@ -61,6 +68,9 @@ let create opts =
     breakpoints;
     pendings = [];
   }
+
+let to_seq_modules agent =
+  Symbols.to_seq_modules agent.symbols
 
 let is_running agent =
   match agent.status_s |> Lwt_react.S.value with Running -> true | _ -> false
