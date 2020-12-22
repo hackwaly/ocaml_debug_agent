@@ -35,25 +35,10 @@ type t = {
   mutable pendings : (conn -> unit Lwt.t) list;
 }
 
-type code_event = {
-  frag : int;
-  event : Instruct.debug_event;
-}
-
-type stack_frame = {
-  index : int;
-  stack_pos : int;
-  event : code_event;
-}
-
-type module_ = Symbols.module_ = {
-  frag : int;
-  id : string;
-  resolved_source : string option;
-  events : Instruct.debug_event array;
-}
-
 module Module = Symbols.Module
+module Code_event = Code_event
+
+type stack_frame = { index : int; stack_pos : int; event : Code_event.t }
 
 let create opts =
   let status_s, set_status = React.S.create Entry in
@@ -76,14 +61,12 @@ let create opts =
     pendings = [];
   }
 
-let to_seq_modules agent =
-  Symbols.to_seq_modules agent.symbols
+let to_seq_modules agent = Symbols.to_seq_modules agent.symbols
 
 let find_module_by_source agent source =
   Symbols.find_module_by_source agent.symbols source
 
-let find_module agent id =
-  Symbols.find_module agent.symbols id
+let find_module agent id = Symbols.find_module agent.symbols id
 
 let is_running agent =
   match agent.status_s |> Lwt_react.S.value with Running -> true | _ -> false
@@ -122,10 +105,8 @@ let stack_trace agent =
             {
               index;
               stack_pos = sp;
-              event = {
-                frag = pc.frag;
-                event = Symbols.find_event agent.symbols pc;
-              }
+              event =
+                { frag = pc.frag; event = Symbols.find_event agent.symbols pc };
             }
           in
           let rec walk_up index stacksize frames =
@@ -133,13 +114,13 @@ let stack_trace agent =
             match%lwt Rdbg.up_frame conn stacksize with
             | Some (sp, pc) ->
                 let frame = make_frame index sp pc in
-                walk_up index frame.event.event.ev_stacksize (frame :: frames)
+                walk_up index (Code_event.stacksize frame.event) (frame :: frames)
             | None -> Lwt.return frames
           in
           (let%lwt sp, pc = Rdbg.initial_frame conn in
            let intial_frame = make_frame 0 sp pc in
            let%lwt frames =
-             walk_up 0 intial_frame.event.event.ev_stacksize [ intial_frame ]
+             walk_up 0 (Code_event.stacksize intial_frame.event) [ intial_frame ]
            in
            let frames = List.rev frames in
            Lwt.wakeup_later resolver frames;

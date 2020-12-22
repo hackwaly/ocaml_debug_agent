@@ -1,7 +1,4 @@
-type pc = Remote_debugger.pc = {
-  frag : int;
-  pos : int;
-}
+type pc = Remote_debugger.pc = { frag : int; pos : int }
 
 type remote_debugger_version = OCaml_400 | OCaml_410
 
@@ -21,33 +18,18 @@ type status =
 
 type t
 
-type code_event = {
-  frag : int;
-  event : Instruct.debug_event;
-}
-
-type stack_frame = {
-  index : int;
-  stack_pos : int;
-  event : code_event;
-}
-
-type module_ = Symbols.module_ = {
-  frag : int;
-  id : string;
-  resolved_source : string option;
-  events : Instruct.debug_event array;
-}
-
 module Module = Symbols.Module
+module Code_event = Code_event
+
+type stack_frame = { index : int; stack_pos : int; event : Code_event.t }
 
 val create : options -> t
 
-val to_seq_modules : t -> module_ Seq.t
+val to_seq_modules : t -> Module.t Seq.t
 
-val find_module : t -> string -> module_ Lwt.t
+val find_module : t -> string -> Module.t Lwt.t
 
-val find_module_by_source : t -> string -> module_ Lwt.t
+val find_module_by_source : t -> string -> Module.t Lwt.t
 
 val status_signal : t -> status Lwt_react.S.t
 

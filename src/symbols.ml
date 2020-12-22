@@ -1,14 +1,12 @@
 open Remote_debugger
 
-type module_ = {
-  frag : int;
-  id : string;
-  resolved_source : string option;
-  events : Instruct.debug_event array;
-}
-
 module Module = struct
-  type t = module_
+  type t = {
+    frag : int;
+    id : string;
+    resolved_source : string option;
+    events : Instruct.debug_event array;
+  }
 
   let find_event m line column =
     let expand_to_equivalent_range code cnum =
@@ -58,8 +56,8 @@ type t = {
   event_by_pc : (pc, Instruct.debug_event) Hashtbl.t;
   commit_queue : (pc, unit) Hashtbl.t;
   committed : (pc, unit) Hashtbl.t;
-  module_by_id : (string, module_) Hashtbl.t;
-  module_by_digest : (string, module_) Hashtbl.t;
+  module_by_id : (string, Module.t) Hashtbl.t;
+  module_by_digest : (string, Module.t) Hashtbl.t;
 }
 
 let derive_source_paths ~id ~dirs =
@@ -196,7 +194,7 @@ let load t ~frag path =
                    |> Array.of_list
                  in
                  Array.fast_sort (Compare.by Debug_event.cnum_of) events;
-                 let module_ = { frag; id; resolved_source; events } in
+                 let module_ = Module.{ frag; id; resolved_source; events } in
                  Hashtbl.replace t.module_by_id id module_;
                  ( match resolved_source with
                  | Some source ->
