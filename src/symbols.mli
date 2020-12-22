@@ -7,6 +7,12 @@ type module_ = {
   events : Instruct.debug_event array;
 }
 
+module Module : sig
+  type t = module_
+
+  val find_event : t -> int -> int -> Instruct.debug_event Lwt.t
+end
+
 type t
 
 val create : unit -> t
@@ -23,6 +29,4 @@ val find_event : t -> pc -> Instruct.debug_event
 
 val find_module : t -> string -> module_ Lwt.t
 
-val find_module_by_src : t -> path:string -> module_ Lwt.t
-
-val find_event_in_module : module_ -> line:int -> column:int -> Instruct.debug_event Lwt.t
+val find_module_by_source : t -> string -> module_ Lwt.t

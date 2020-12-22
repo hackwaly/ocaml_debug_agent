@@ -39,11 +39,15 @@ type module_ = Symbols.module_ = {
   events : Instruct.debug_event array;
 }
 
+module Module = Symbols.Module
+
 val create : options -> t
 
 val to_seq_modules : t -> module_ Seq.t
 
-val resolve_event : t -> source:string -> line:int -> column:int -> code_event Lwt.t
+val find_module : t -> string -> module_ Lwt.t
+
+val find_module_by_source : t -> string -> module_ Lwt.t
 
 val status_signal : t -> status Lwt_react.S.t
 

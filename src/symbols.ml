@@ -7,6 +7,51 @@ type module_ = {
   events : Instruct.debug_event array;
 }
 
+module Module = struct
+  type t = module_
+
+  let find_event m line column =
+    let expand_to_equivalent_range code cnum =
+      (* TODO: Support skip comments *)
+      let is_whitespace_or_semicolon c =
+        match c with ' ' | '\t' | '\r' | '\n' | ';' -> true | _ -> false
+      in
+      assert (cnum >= 0 && cnum < String.length code);
+      let c = code.[cnum] in
+      if is_whitespace_or_semicolon c then
+        let rec aux f n =
+          let n' = f n in
+          let c = code.[n'] in
+          if is_whitespace_or_semicolon c then aux f n' else Lwt.return n
+        in
+        let%lwt l = aux (fun x -> x - 1) cnum in
+        let%lwt r = aux (fun x -> x + 1) cnum in
+        Lwt.return (l, r + 1)
+      else Lwt.return (cnum, cnum)
+    in
+    let find code events cnum =
+      let%lwt l, r = expand_to_equivalent_range code cnum in
+      assert (l <= r);
+      let cmp ev () =
+        let ev_cnum = Debug_event.cnum_of ev in
+        if ev_cnum < l then -1 else if ev_cnum > r then 1 else 0
+      in
+      Lwt.return
+        ( match events |> Array_util.bsearch ~cmp () with
+        | `At i -> events.(i)
+        | _ -> raise Not_found )
+    in
+    let%lwt code, bols =
+      Lwt_util.file_content_and_bols
+        ( try m.resolved_source |> Option.get
+          with Invalid_argument _ -> raise Not_found )
+    in
+    let bol = bols.(line - 1) in
+    let cnum = bol + column in
+    let%lwt ev = find code m.events cnum in
+    Lwt.return ev
+end
+
 type eventlist = { evl : Instruct.debug_event list; dirs : string list }
 
 type t = {
@@ -54,8 +99,6 @@ let commit t (module Rdbg : Remote_debugger.S) conn =
   Hashtbl.reset t.commit_queue;
   Log.debug (fun m -> m "symbols commit end");%lwt
   Lwt.return ()
-
-let cnum_of_event ev = (Debug_event.lexing_position ev).Lexing.pos_cnum
 
 let load t ~frag path =
   let read_toc ic =
@@ -152,7 +195,7 @@ let load t ~frag path =
                    |> List.filter (fun ev -> not (Debug_event.is_pseudo ev))
                    |> Array.of_list
                  in
-                 Array.fast_sort (Compare.by cnum_of_event) events;
+                 Array.fast_sort (Compare.by Debug_event.cnum_of) events;
                  let module_ = { frag; id; resolved_source; events } in
                  Hashtbl.replace t.module_by_id id module_;
                  ( match resolved_source with
@@ -164,51 +207,10 @@ let load t ~frag path =
                  Lwt.return ())))
     [%finally Lwt_io.close ic]
 
-let find_module_by_src t ~path =
-  let%lwt digest = Lwt_util.digest_file path in
-  Hashtbl.find t.module_by_digest digest |> Lwt.return
-
 let find_module t id = Hashtbl.find t.module_by_id id |> Lwt.return
 
-let expand_to_equivalent_range code cnum =
-  (* TODO: Support skip comments *)
-  let is_whitespace_or_semicolon c =
-    match c with ' ' | '\t' | '\r' | '\n' | ';' -> true | _ -> false
-  in
-  assert (cnum >= 0 && cnum < String.length code);
-  let c = code.[cnum] in
-  if is_whitespace_or_semicolon c then
-    let rec aux f n =
-      let n' = f n in
-      let c = code.[n'] in
-      if is_whitespace_or_semicolon c then aux f n' else Lwt.return n
-    in
-    let%lwt l = aux (fun x -> x - 1) cnum in
-    let%lwt r = aux (fun x -> x + 1) cnum in
-    Lwt.return (l, r + 1)
-  else Lwt.return (cnum, cnum)
+let find_module_by_source t source =
+  let%lwt digest = Lwt_util.digest_file source in
+  Hashtbl.find t.module_by_digest digest |> Lwt.return
 
 let find_event t pc = Hashtbl.find t.event_by_pc pc
-
-let find_event_in_module mi ~line ~column =
-  let find code events cnum =
-    let%lwt l, r = expand_to_equivalent_range code cnum in
-    assert (l <= r);
-    let cmp ev () =
-      let ev_cnum = cnum_of_event ev in
-      if ev_cnum < l then -1 else if ev_cnum > r then 1 else 0
-    in
-    Lwt.return
-      ( match events |> Array_util.bsearch ~cmp () with
-      | `At i -> events.(i)
-      | _ -> raise Not_found )
-  in
-  let%lwt code, bols =
-    Lwt_util.file_content_and_bols
-      ( try mi.resolved_source |> Option.get
-        with Invalid_argument _ -> raise Not_found )
-  in
-  let bol = bols.(line - 1) in
-  let cnum = bol + column in
-  let%lwt ev = find code mi.events cnum in
-  Lwt.return ev

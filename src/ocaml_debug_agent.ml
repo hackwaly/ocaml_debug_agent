@@ -53,6 +53,8 @@ type module_ = Symbols.module_ = {
   events : Instruct.debug_event array;
 }
 
+module Module = Symbols.Module
+
 let create opts =
   let status_s, set_status = React.S.create Entry in
   let action_e, emit_action = Lwt_react.E.create () in
@@ -77,10 +79,11 @@ let create opts =
 let to_seq_modules agent =
   Symbols.to_seq_modules agent.symbols
 
-let resolve_event agent ~source ~line ~column =
-  let%lwt module_ = Symbols.find_module_by_src agent.symbols ~path:source in
-  let%lwt event = Symbols.find_event_in_module module_ ~line ~column in
-  Lwt.return {frag = module_.frag; event}
+let find_module_by_source agent source =
+  Symbols.find_module_by_source agent.symbols source
+
+let find_module agent id =
+  Symbols.find_module agent.symbols id
 
 let is_running agent =
   match agent.status_s |> Lwt_react.S.value with Running -> true | _ -> false

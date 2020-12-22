@@ -10,3 +10,5 @@ let is_pseudo ev =
   match ev.Instruct.ev_kind with
   | Event_pseudo -> true
   | _ -> false
+
+let cnum_of ev = (lexing_position ev).Lexing.pos_cnum
