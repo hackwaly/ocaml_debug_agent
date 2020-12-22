@@ -207,9 +207,13 @@ let start agent =
     let exec_with_temporary_breakpoint pc f =
       let already_has_bp = Breakpoints.is_commited agent.breakpoints pc in
       if already_has_bp then f ()
-      else (
+      else
+        let cleanup () =
+          Rdbg.reset_instr conn pc;%lwt
+          Rdbg.set_event conn pc
+        in
         Rdbg.set_breakpoint conn pc;%lwt
-        (f ()) [%finally Rdbg.reset_instr conn pc] )
+        (f ()) [%finally cleanup ()]
     in
     let exec_with_frame index f =
       Log.debug (fun m -> m "exec_with_frame");%lwt
