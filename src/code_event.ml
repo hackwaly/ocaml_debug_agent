@@ -11,3 +11,6 @@ let lexing_location t =
 
 let lexing_position t =
   Debug_event.lexing_position t.event
+
+let defname t =
+  t.event.ev_defname
