@@ -23,14 +23,15 @@ type action = [ `Wake_up | `Run | `Pause | `Stop ]
 type stopped_action = [ `Wake_up | `Run | `Stop ]
 
 type t = {
+  options : options;
   remote_debugger : (module Remote_debugger.S);
-  debug_socket : Lwt_unix.file_descr;
-  yield_point : int;
   status_s : status Lwt_react.S.t;
   set_status : status -> unit;
   action_e : action Lwt_react.E.t;
   emit_action : action -> unit;
   symbols : Symbols.t;
+  symbols_updated_e : unit Lwt_react.E.t;
+  emit_symbols_updated : unit -> unit;
   breakpoints : Breakpoints.t;
   mutable pendings : (conn -> unit Lwt.t) list;
 }
@@ -38,26 +39,30 @@ type t = {
 module Module = Symbols.Module
 module Stack_frame = Stack_frame
 
-let create opts =
+let create options =
   let status_s, set_status = React.S.create Entry in
   let action_e, emit_action = Lwt_react.E.create () in
+  let symbols_updated_e, emit_symbols_updated = Lwt_react.E.create () in
   let symbols = Symbols.create () in
   let breakpoints = Breakpoints.create () in
   {
     remote_debugger =
-      ( match opts.remote_debugger_version with
+      ( match options.remote_debugger_version with
       | OCaml_400 -> failwith "Not yet implemented"
       | OCaml_410 -> (module Remote_debugger_410 : Remote_debugger.S) );
-    debug_socket = opts.debug_socket;
-    yield_point = opts.yield_point;
+    options;
     status_s;
     set_status;
     action_e;
     emit_action;
     symbols;
+    symbols_updated_e;
+    emit_symbols_updated;
     breakpoints;
     pendings = [];
   }
+
+let symbols_updated_event agent = agent.symbols_updated_e
 
 let to_seq_modules agent = Symbols.to_seq_modules agent.symbols
 
@@ -130,7 +135,7 @@ let stack_trace agent =
 
 let start agent =
   let (module Rdbg) = agent.remote_debugger in
-  let%lwt fd, _ = Lwt_unix.accept agent.debug_socket in
+  let%lwt fd, _ = Lwt_unix.accept agent.options.debug_socket in
   let conn =
     {
       io_in = Lwt_io.(of_fd ~mode:input fd);
@@ -187,6 +192,7 @@ let start agent =
     in
     function `Run -> run () | `Stop -> stop () | `Wake_up -> Lwt.return ()
   in
+  Symbols.load agent.symbols ~frag:0 agent.options.symbols_file;%lwt
   try%lwt
     while%lwt true do
       sync ();%lwt
