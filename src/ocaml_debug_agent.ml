@@ -193,6 +193,7 @@ let start agent =
     function `Run -> run () | `Stop -> stop () | `Wake_up -> Lwt.return ()
   in
   Symbols.load agent.symbols ~frag:0 agent.options.symbols_file;%lwt
+  agent.emit_symbols_updated ();
   try%lwt
     while%lwt true do
       sync ();%lwt
