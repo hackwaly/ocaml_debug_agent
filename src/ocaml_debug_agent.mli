@@ -21,10 +21,15 @@ type status =
 
 type t
 
+type code_event = {
+  frag : int;
+  event : Instruct.debug_event;
+}
+
 type stack_frame = {
   index : int;
   stack_pos : int;
-  debug_event : Instruct.debug_event;
+  event : code_event;
 }
 
 type module_ = Symbols.module_ = {
@@ -32,11 +37,6 @@ type module_ = Symbols.module_ = {
   id : string;
   resolved_source : string option;
   events : Instruct.debug_event array;
-}
-
-type code_event = {
-  frag : int;
-  event : Instruct.debug_event;
 }
 
 val create : options -> t

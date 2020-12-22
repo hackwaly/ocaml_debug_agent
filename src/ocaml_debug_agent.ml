@@ -35,10 +35,15 @@ type t = {
   mutable pendings : (conn -> unit Lwt.t) list;
 }
 
+type code_event = {
+  frag : int;
+  event : Instruct.debug_event;
+}
+
 type stack_frame = {
   index : int;
   stack_pos : int;
-  debug_event : Instruct.debug_event;
+  event : code_event;
 }
 
 type module_ = Symbols.module_ = {
@@ -46,11 +51,6 @@ type module_ = Symbols.module_ = {
   id : string;
   resolved_source : string option;
   events : Instruct.debug_event array;
-}
-
-type code_event = {
-  frag : int;
-  event : Instruct.debug_event;
 }
 
 let create opts =
@@ -115,11 +115,14 @@ let stack_trace agent =
       push_pending agent (fun conn ->
           let (module Rdbg) = agent.remote_debugger in
           let%lwt curr_fr_sp, _ = Rdbg.get_frame conn in
-          let make_frame index sp pc =
+          let make_frame index sp (pc : pc) =
             {
               index;
               stack_pos = sp;
-              debug_event = Symbols.find_event agent.symbols pc;
+              event = {
+                frag = pc.frag;
+                event = Symbols.find_event agent.symbols pc;
+              }
             }
           in
           let rec walk_up index stacksize frames =
@@ -127,13 +130,13 @@ let stack_trace agent =
             match%lwt Rdbg.up_frame conn stacksize with
             | Some (sp, pc) ->
                 let frame = make_frame index sp pc in
-                walk_up index frame.debug_event.ev_stacksize (frame :: frames)
+                walk_up index frame.event.event.ev_stacksize (frame :: frames)
             | None -> Lwt.return frames
           in
           (let%lwt sp, pc = Rdbg.initial_frame conn in
            let intial_frame = make_frame 0 sp pc in
            let%lwt frames =
-             walk_up 0 intial_frame.debug_event.ev_stacksize [ intial_frame ]
+             walk_up 0 intial_frame.event.event.ev_stacksize [ intial_frame ]
            in
            let frames = List.rev frames in
            Lwt.wakeup_later resolver frames;
