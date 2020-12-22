@@ -1,3 +1,5 @@
+module Log = Log
+
 type pc = Remote_debugger.pc = { frag : int; pos : int }
 
 type remote_debugger_version = OCaml_400 | OCaml_410

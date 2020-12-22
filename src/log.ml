@@ -1,1 +1,3 @@
-include (val Logs_lwt.src_log (Logs.Src.create "ocaml_debug_agent") : Logs_lwt.LOG)
+let src = Logs.Src.create "ocaml_debug_agent"
+
+include (val Logs_lwt.src_log src : Logs_lwt.LOG)
