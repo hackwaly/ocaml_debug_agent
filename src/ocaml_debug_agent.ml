@@ -167,11 +167,11 @@ let start agent =
     | Uncaught_exc | Exited -> Lwt.return true
     | _ -> Lwt.return false
   in
-  let action_stream =
+  let wait_action () =
     agent.action_e
     |> Lwt_react.E.fmap (fun action ->
            match action with `Pause -> None | #stopped_action as x -> Some x)
-    |> Lwt_react.E.to_stream
+    |> Lwt_react.E.next
   in
   let execute =
     let run () =
@@ -201,7 +201,7 @@ let start agent =
   try%lwt
     while%lwt true do
       sync ();%lwt
-      let%lwt action = Lwt_stream.next action_stream in
+      let%lwt action = wait_action () in
       execute action;%lwt
       if%lwt
         Lwt.return
