@@ -96,8 +96,8 @@ let push_pending agent f =
 
 let stack_trace agent =
   match agent.status_s |> React.S.value with
-  | Running -> [%lwt assert false]
-  | Exited _ -> Lwt.return []
+  | Running
+  | Exited _
   | Entry -> Lwt.return []
   | Stopped _ ->
       let promise, resolver = Lwt.task () in
