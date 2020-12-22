@@ -41,6 +41,8 @@ val remove_breakpoint : t -> pc -> unit
 
 val run : t -> unit
 
+val step_in : t -> unit
+
 val pause : t -> unit
 
 val stop : t -> unit
