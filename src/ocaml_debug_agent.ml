@@ -212,20 +212,19 @@ let start agent =
         (f ()) [%finally Rdbg.reset_instr conn pc] )
     in
     let exec_with_frame index f =
+      Log.debug (fun m -> m "exec_with_frame");%lwt
       assert (index >= 0);
-      let rec walk cur (stack_pos, pc, ev) =
+      let rec walk cur (stack_pos, pc) =
+        Log.debug (fun m -> m "exec_with_frame cur:%d" cur);%lwt
+        let ev = Symbols.find_event agent.symbols pc in
         if cur = index then Lwt.return (Some (stack_pos, pc, ev))
         else
           match%lwt Rdbg.up_frame conn ev.Instruct.ev_stacksize with
           | None -> Lwt.return None
-          | Some (stack_pos, pc) ->
-              walk (index + 1)
-                (stack_pos, pc, Symbols.find_event agent.symbols pc)
+          | Some (stack_pos, pc) -> walk (index + 1) (stack_pos, pc)
       in
       let%lwt stack_pos, pc = Rdbg.initial_frame conn in
-      let%lwt frame =
-        walk 0 (stack_pos, pc, Symbols.find_event agent.symbols pc)
-      in
+      let%lwt frame = walk 0 (stack_pos, pc) in
       (f frame) [%finally Rdbg.set_frame conn stack_pos]
     in
     let run () =
