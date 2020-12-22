@@ -221,7 +221,7 @@ let start agent =
         else
           match%lwt Rdbg.up_frame conn ev.Instruct.ev_stacksize with
           | None -> Lwt.return None
-          | Some (stack_pos, pc) -> walk (index + 1) (stack_pos, pc)
+          | Some (stack_pos, pc) -> walk (cur + 1) (stack_pos, pc)
       in
       let%lwt stack_pos, pc = Rdbg.initial_frame conn in
       let%lwt frame = walk 0 (stack_pos, pc) in
