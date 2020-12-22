@@ -205,7 +205,7 @@ let load t ~frag path =
                  Lwt.return ())))
     [%finally Lwt_io.close ic]
 
-let find_module t id = Hashtbl.find t.module_by_id id |> Lwt.return
+let find_module t id = Hashtbl.find t.module_by_id id
 
 let find_module_by_source t source =
   let%lwt digest = Lwt_util.digest_file source in

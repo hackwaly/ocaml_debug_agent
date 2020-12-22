@@ -100,11 +100,13 @@ let stack_trace agent =
           let (module Rdbg) = agent.remote_debugger in
           let%lwt curr_fr_sp, _ = Rdbg.get_frame conn in
           let make_frame index sp (pc : pc) =
-            Stack_frame.{
-              index;
+            let event = Symbols.find_event agent.symbols pc in
+            let module_ = Symbols.find_module agent.symbols event.ev_module in
+            {
+              Stack_frame.index;
               stack_pos = sp;
-              event =
-                { frag = pc.frag; event = Symbols.find_event agent.symbols pc };
+              module_;
+              event;
             }
           in
           let rec walk_up index stacksize frames =

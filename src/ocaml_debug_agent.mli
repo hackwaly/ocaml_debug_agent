@@ -25,7 +25,7 @@ val create : options -> t
 
 val to_seq_modules : t -> Module.t Seq.t
 
-val find_module : t -> string -> Module.t Lwt.t
+val find_module : t -> string -> Module.t
 
 val find_module_by_source : t -> string -> Module.t Lwt.t
 

@@ -25,6 +25,6 @@ val to_seq_events : t -> Instruct.debug_event Seq.t
 
 val find_event : t -> pc -> Instruct.debug_event
 
-val find_module : t -> string -> Module.t Lwt.t
+val find_module : t -> string -> Module.t
 
 val find_module_by_source : t -> string -> Module.t Lwt.t
