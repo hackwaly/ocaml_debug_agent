@@ -171,6 +171,7 @@ let start agent =
     agent.action_e
     |> Lwt_react.E.fmap (fun action ->
            match action with `Pause -> None | #stopped_action as x -> Some x)
+    |> Lwt_react.E.once
     |> Lwt_react.E.to_stream
     |> Lwt_stream.next
   in
