@@ -19,7 +19,8 @@ type status =
   | Stopped of { breakpoint : bool }
   | Exited of { uncaught_exc : bool }
 
-type stopped_action = [ `Wake_up | `Run | `Step_in | `Step_out | `Stop ]
+type stopped_action =
+  [ `Wake_up | `Run | `Step_in | `Step_out | `Step_over | `Stop ]
 
 type action = [ stopped_action | `Pause ]
 
@@ -90,6 +91,8 @@ let run agent = agent.emit_action `Run
 let step_in agent = agent.emit_action `Step_in
 
 let step_out agent = agent.emit_action `Step_out
+
+let step_over agent = agent.emit_action `Step_over
 
 let pause agent = agent.emit_action `Pause
 
@@ -231,44 +234,41 @@ let start agent =
       let%lwt frame = walk 0 (stack_pos, pc) in
       (f frame) [%finally Rdbg.set_frame conn stack_pos]
     in
-    let run () =
+    let wrap_run f () =
+      agent.set_status Running;
+      let%lwt status = f () in
+      agent.set_status status;
+      Lwt.return ()
+    in
+    let internal_run () =
       let rec loop () =
         let%lwt report = Rdbg.go conn agent.options.yield_point in
         match%lwt check_stop report with
         | Some status -> Lwt.return status
         | None -> loop ()
       in
-      agent.set_status Running;
-      let%lwt status = loop () in
-      agent.set_status status;
-      Lwt.return ()
+      loop ()
     in
-    let step_in () =
-      let go () = Rdbg.go conn 1 in
-      agent.set_status Running;
-      let%lwt report = go () in
-      agent.set_status
+    let run = wrap_run internal_run in
+    let internal_step_in () =
+      let%lwt report = Rdbg.go conn 1 in
+      Lwt.return
         ( match report.rep_type with
         | Breakpoint -> Stopped { breakpoint = true }
         | Event -> Stopped { breakpoint = false }
         | Uncaught_exc -> Exited { uncaught_exc = true }
         | Exited -> Exited { uncaught_exc = false }
-        | _ -> assert false );
-      Lwt.return ()
+        | _ -> assert false )
     in
-    let step_out () =
-      [%lwt
-        assert (
-          match agent.status_s |> Lwt_react.S.value with
-          | Stopped _ -> true
-          | _ -> false )];%lwt
+    let step_in = wrap_run internal_step_in in
+    let internal_step_out () =
       let promise, resolver = Lwt.task () in
       exec_with_frame 1 (fun frame ->
           Lwt.wakeup_later resolver frame;
           Lwt.return ());%lwt
       let%lwt frame = promise in
       match frame with
-      | None -> Lwt.return ()
+      | None -> internal_run ()
       | Some (stack_pos, pc, _) ->
           temporary_trap_barrier_and_breakpoint := Some (stack_pos, pc);
           let cleanup () =
@@ -283,12 +283,22 @@ let start agent =
                      | Some status -> Lwt.return status
                      | None -> loop ()
                    in
-                   agent.set_status Running;
-                   let%lwt status = loop () in
-                   agent.set_status status;
-                   Lwt.return ())))
+                   loop ())))
             [%finally cleanup ()]
     in
+    let step_out = wrap_run internal_step_out in
+    let internal_step_over () =
+      let%lwt stack_pos1, pc1 = Rdbg.get_frame conn in
+      let%lwt step_in_status = internal_step_in () in
+      let%lwt stack_pos2, pc2 = Rdbg.get_frame conn in
+      let ev1 = Symbols.find_event agent.symbols pc1 in
+      let ev2 = Symbols.find_event agent.symbols pc2 in
+      let is_entered =
+        stack_pos2 - ev2.ev_stacksize > stack_pos1 - ev1.ev_stacksize
+      in
+      if is_entered then internal_step_out () else Lwt.return step_in_status
+    in
+    let step_over = wrap_run internal_step_over in
     let stop () =
       Rdbg.stop conn;%lwt
       Lwt.fail Exit
@@ -297,6 +307,7 @@ let start agent =
     | `Run -> run ()
     | `Step_in -> step_in ()
     | `Step_out -> step_out ()
+    | `Step_over -> step_over ()
     | `Stop -> stop ()
     | `Wake_up -> Lwt.return ()
   in

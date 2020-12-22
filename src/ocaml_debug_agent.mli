@@ -45,6 +45,8 @@ val step_in : t -> unit
 
 val step_out : t -> unit
 
+val step_over : t -> unit
+
 val pause : t -> unit
 
 val stop : t -> unit
