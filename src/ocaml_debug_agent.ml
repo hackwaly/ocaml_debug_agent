@@ -179,6 +179,7 @@ let start agent =
       in
       agent.set_status Running;
       let%lwt report = loop () in
+      Log.debug (fun m -> m "Report %s" (show_report report));%lwt
       agent.set_status
         ( match report.rep_type with
         | Breakpoint -> Stopped { breakpoint = true }
