@@ -19,9 +19,7 @@ type status =
 type t
 
 module Module = Symbols.Module
-module Code_event = Code_event
-
-type stack_frame = { index : int; stack_pos : int; event : Code_event.t }
+module Stack_frame = Stack_frame
 
 val create : options -> t
 
@@ -43,6 +41,6 @@ val pause : t -> unit
 
 val stop : t -> unit
 
-val stack_trace : t -> stack_frame list Lwt.t
+val stack_trace : t -> Stack_frame.t list Lwt.t
 
 val start : t -> unit Lwt.t

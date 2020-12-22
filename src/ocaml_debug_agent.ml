@@ -36,9 +36,7 @@ type t = {
 }
 
 module Module = Symbols.Module
-module Code_event = Code_event
-
-type stack_frame = { index : int; stack_pos : int; event : Code_event.t }
+module Stack_frame = Stack_frame
 
 let create opts =
   let status_s, set_status = React.S.create Entry in
@@ -102,7 +100,7 @@ let stack_trace agent =
           let (module Rdbg) = agent.remote_debugger in
           let%lwt curr_fr_sp, _ = Rdbg.get_frame conn in
           let make_frame index sp (pc : pc) =
-            {
+            Stack_frame.{
               index;
               stack_pos = sp;
               event =
@@ -114,13 +112,13 @@ let stack_trace agent =
             match%lwt Rdbg.up_frame conn stacksize with
             | Some (sp, pc) ->
                 let frame = make_frame index sp pc in
-                walk_up index (Code_event.stacksize frame.event) (frame :: frames)
+                walk_up index (Stack_frame.stacksize frame) (frame :: frames)
             | None -> Lwt.return frames
           in
           (let%lwt sp, pc = Rdbg.initial_frame conn in
            let intial_frame = make_frame 0 sp pc in
            let%lwt frames =
-             walk_up 0 (Code_event.stacksize intial_frame.event) [ intial_frame ]
+             walk_up 0 (Stack_frame.stacksize intial_frame) [ intial_frame ]
            in
            let frames = List.rev frames in
            Lwt.wakeup_later resolver frames;
