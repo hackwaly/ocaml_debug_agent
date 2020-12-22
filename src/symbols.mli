@@ -13,13 +13,13 @@ val create : unit -> t
 
 val commit : t -> (module Remote_debugger.S) -> conn -> unit Lwt.t
 
-val load : t -> int -> string -> unit Lwt.t
+val load : t -> frag:int -> string -> unit Lwt.t
 
 val to_seq_modules : t -> module_ Seq.t
 
 val to_seq_events : t -> Instruct.debug_event Seq.t
 
-val find_event : t -> pc -> Instruct.debug_event Lwt.t
+val find_event : t -> pc -> Instruct.debug_event
 
 val find_module : t -> string -> module_ Lwt.t
 

@@ -57,7 +57,7 @@ let commit t (module Rdbg : Remote_debugger.S) conn =
 
 let cnum_of_event ev = (Debug_event.lexing_position ev).Lexing.pos_cnum
 
-let load t frag path =
+let load t ~frag path =
   let read_toc ic =
     let%lwt len = Lwt_io.length ic in
     let pos_trailer = Int64.sub len (Int64.of_int 16) in
@@ -188,10 +188,10 @@ let expand_to_equivalent_range code cnum =
     Lwt.return (l, r + 1)
   else Lwt.return (cnum, cnum)
 
-let find_event t pc = Hashtbl.find t.event_by_pc pc |> Lwt.return
+let find_event t pc = Hashtbl.find t.event_by_pc pc
 
 let find_event_in_module mi ~line ~column =
-  let find_event code events cnum =
+  let find code events cnum =
     let%lwt l, r = expand_to_equivalent_range code cnum in
     assert (l <= r);
     let cmp ev () =
@@ -210,5 +210,5 @@ let find_event_in_module mi ~line ~column =
   in
   let bol = bols.(line - 1) in
   let cnum = bol + column in
-  let%lwt ev = find_event code mi.events cnum in
+  let%lwt ev = find code mi.events cnum in
   Lwt.return ev
