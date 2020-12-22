@@ -174,12 +174,11 @@ let start agent =
   let execute =
     let run () =
       let rec loop () =
-        let%lwt report = Rdbg.go conn 0 in
+        let%lwt report = Rdbg.go conn agent.options.yield_point in
         if%lwt check report then Lwt.return report else loop ()
       in
       agent.set_status Running;
       let%lwt report = loop () in
-      Log.debug (fun m -> m "Report %s" (show_report report));%lwt
       agent.set_status
         ( match report.rep_type with
         | Breakpoint -> Stopped { breakpoint = true }
