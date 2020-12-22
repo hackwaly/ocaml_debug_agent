@@ -6,6 +6,7 @@ type t = {
   bp_by_pc : (pc, breakpoint_desc) Hashtbl.t;
   commit_queue : (pc, unit) Hashtbl.t;
   committed : (pc, unit) Hashtbl.t;
+  mutable temporary_breakpoint : pc option;
 }
 
 let create () =
@@ -13,6 +14,7 @@ let create () =
     bp_by_pc = Hashtbl.create 0;
     commit_queue = Hashtbl.create 0;
     committed = Hashtbl.create 0;
+    temporary_breakpoint = None;
   }
 
 let set t pc =
@@ -24,7 +26,11 @@ let remove t pc =
   Hashtbl.remove t.bp_by_pc pc;
   Hashtbl.replace t.commit_queue pc ()
 
-let check t pc = Lwt.return (Hashtbl.mem t.bp_by_pc pc)
+let is_commited t pc =
+  Hashtbl.mem t.committed pc
+
+let check t pc =
+  Lwt.return (Hashtbl.mem t.bp_by_pc pc)
 
 let commit t (module Rdbg : Remote_debugger.S) conn =
   let commit_one pc =

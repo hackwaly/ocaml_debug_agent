@@ -43,6 +43,8 @@ val run : t -> unit
 
 val step_in : t -> unit
 
+val step_out : t -> unit
+
 val pause : t -> unit
 
 val stop : t -> unit

@@ -19,9 +19,9 @@ type status =
   | Stopped of { breakpoint : bool }
   | Exited of { uncaught_exc : bool }
 
-type action = [ `Wake_up | `Run | `Step_in | `Pause | `Stop ]
+type stopped_action = [ `Wake_up | `Run | `Step_in | `Step_out | `Stop ]
 
-type stopped_action = [ `Wake_up | `Run | `Step_in | `Stop ]
+type action = [ stopped_action | `Pause ]
 
 type t = {
   options : options;
@@ -89,6 +89,8 @@ let run agent = agent.emit_action `Run
 
 let step_in agent = agent.emit_action `Step_in
 
+let step_out agent = agent.emit_action `Step_out
+
 let pause agent = agent.emit_action `Pause
 
 let stop agent = agent.emit_action `Stop
@@ -154,15 +156,6 @@ let start agent =
     Breakpoints.commit agent.breakpoints (module Rdbg) conn;%lwt
     flush_pendings ()
   in
-  let check report =
-    [%lwt assert (is_running agent)];%lwt
-    sync ();%lwt
-    match report.rep_type with
-    | Breakpoint ->
-        Breakpoints.check agent.breakpoints report.rep_program_pointer
-    | Uncaught_exc | Exited -> Lwt.return true
-    | _ -> Lwt.return false
-  in
   let wait_action () =
     agent.action_e
     |> Lwt_react.E.fmap (fun action ->
@@ -170,26 +163,85 @@ let start agent =
     |> Lwt_react.E.once |> Lwt_react.E.to_stream |> Lwt_stream.next
   in
   let execute =
+    let temporary_trap_barrier_and_breakpoint = ref None in
+    let check_meet_temporary_trap_barrier_and_breakpoint report =
+      match temporary_trap_barrier_and_breakpoint.contents with
+      | None -> false
+      | Some (stack_pos, pc) ->
+          report.rep_stack_pointer = stack_pos
+          && report.rep_program_pointer = pc
+    in
+    let check_stop report =
+      [%lwt assert (is_running agent)];%lwt
+      sync ();%lwt
+      match report.rep_type with
+      | Breakpoint ->
+          let meet_temporary_trap_barrier_and_breakpoint =
+            check_meet_temporary_trap_barrier_and_breakpoint report
+          in
+          if meet_temporary_trap_barrier_and_breakpoint then
+            Lwt.return (Some (Stopped { breakpoint = false }))
+          else
+            if%lwt
+              Breakpoints.check agent.breakpoints report.rep_program_pointer
+            then Lwt.return (Some (Stopped { breakpoint = true }))
+            else Lwt.return None
+      | Uncaught_exc -> Lwt.return (Some (Exited { uncaught_exc = true }))
+      | Exited -> Lwt.return (Some (Exited { uncaught_exc = false }))
+      | Trap -> (
+          match temporary_trap_barrier_and_breakpoint.contents with
+          | None -> [%lwt assert false]
+          | Some _ ->
+              let meet_temporary_trap_barrier_and_breakpoint =
+                check_meet_temporary_trap_barrier_and_breakpoint report
+              in
+              if meet_temporary_trap_barrier_and_breakpoint then
+                Lwt.return (Some (Stopped { breakpoint = false }))
+              else Lwt.return None )
+      | _ -> Lwt.return None
+    in
+    let exec_with_trap_barrier stack_pos f =
+      Rdbg.set_trap_barrier conn stack_pos;%lwt
+      (f ()) [%finally Rdbg.set_trap_barrier conn 0]
+    in
+    let exec_with_temporary_breakpoint pc f =
+      let already_has_bp = Breakpoints.is_commited agent.breakpoints pc in
+      if already_has_bp then f ()
+      else (
+        Rdbg.set_breakpoint conn pc;%lwt
+        (f ()) [%finally Rdbg.reset_instr conn pc] )
+    in
+    let exec_with_frame index f =
+      assert (index >= 0);
+      let rec walk cur (stack_pos, pc, ev) =
+        if cur = index then Lwt.return (Some (stack_pos, pc, ev))
+        else
+          match%lwt Rdbg.up_frame conn ev.Instruct.ev_stacksize with
+          | None -> Lwt.return None
+          | Some (stack_pos, pc) ->
+              walk (index + 1)
+                (stack_pos, pc, Symbols.find_event agent.symbols pc)
+      in
+      let%lwt stack_pos, pc = Rdbg.initial_frame conn in
+      let%lwt frame =
+        walk 0 (stack_pos, pc, Symbols.find_event agent.symbols pc)
+      in
+      (f frame) [%finally Rdbg.set_frame conn stack_pos]
+    in
     let run () =
       let rec loop () =
         let%lwt report = Rdbg.go conn agent.options.yield_point in
-        if%lwt check report then Lwt.return report else loop ()
+        match%lwt check_stop report with
+        | Some status -> Lwt.return status
+        | None -> loop ()
       in
       agent.set_status Running;
-      let%lwt report = loop () in
-      agent.set_status
-        ( match report.rep_type with
-        | Breakpoint -> Stopped { breakpoint = true }
-        | Event -> Stopped { breakpoint = false }
-        | Uncaught_exc -> Exited { uncaught_exc = true }
-        | Exited -> Exited { uncaught_exc = false }
-        | _ -> assert false );
+      let%lwt status = loop () in
+      agent.set_status status;
       Lwt.return ()
     in
     let step_in () =
-      let go () =
-        Rdbg.go conn 1
-      in
+      let go () = Rdbg.go conn 1 in
       agent.set_status Running;
       let%lwt report = go () in
       agent.set_status
@@ -201,6 +253,39 @@ let start agent =
         | _ -> assert false );
       Lwt.return ()
     in
+    let step_out () =
+      [%lwt
+        assert (
+          match agent.status_s |> Lwt_react.S.value with
+          | Stopped _ -> true
+          | _ -> false )];%lwt
+      let promise, resolver = Lwt.task () in
+      exec_with_frame 1 (fun frame ->
+          Lwt.wakeup_later resolver frame;
+          Lwt.return ());%lwt
+      let%lwt frame = promise in
+      match frame with
+      | None -> Lwt.return ()
+      | Some (stack_pos, pc, _) ->
+          temporary_trap_barrier_and_breakpoint := Some (stack_pos, pc);
+          let cleanup () =
+            temporary_trap_barrier_and_breakpoint := None;
+            Lwt.return ()
+          in
+          (exec_with_trap_barrier stack_pos (fun () ->
+               exec_with_temporary_breakpoint pc (fun () ->
+                   let rec loop () =
+                     let%lwt report = Rdbg.go conn agent.options.yield_point in
+                     match%lwt check_stop report with
+                     | Some status -> Lwt.return status
+                     | None -> loop ()
+                   in
+                   agent.set_status Running;
+                   let%lwt status = loop () in
+                   agent.set_status status;
+                   Lwt.return ())))
+            [%finally cleanup ()]
+    in
     let stop () =
       Rdbg.stop conn;%lwt
       Lwt.fail Exit
@@ -208,6 +293,7 @@ let start agent =
     function
     | `Run -> run ()
     | `Step_in -> step_in ()
+    | `Step_out -> step_out ()
     | `Stop -> stop ()
     | `Wake_up -> Lwt.return ()
   in
