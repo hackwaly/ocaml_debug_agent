@@ -144,6 +144,8 @@ let start agent =
       io_out = Lwt_io.(of_fd ~mode:output fd);
     }
   in
+  let%lwt pid = Rdbg.get_pid conn in
+  ignore pid;
   let flush_pendings () =
     while%lwt agent.pendings <> [] do
       let pendings = List.rev agent.pendings in
