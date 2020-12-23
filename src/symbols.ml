@@ -58,6 +58,8 @@ type t = {
   committed : (pc, unit) Hashtbl.t;
   module_by_id : (string, Module.t) Hashtbl.t;
   module_by_digest : (string, Module.t) Hashtbl.t;
+  mutable source_dirs : string list;
+  mutable version : int;
 }
 
 let derive_source_paths ~id ~dirs =
@@ -79,7 +81,13 @@ let create () =
     committed = Hashtbl.create 0;
     module_by_id = Hashtbl.create 0;
     module_by_digest = Hashtbl.create 0;
+    source_dirs = [];
+    version = 0;
   }
+
+let version t = t.version
+
+let source_dirs t = t.source_dirs
 
 let to_seq_modules t = t.module_by_id |> Hashtbl.to_seq_values
 
@@ -166,6 +174,8 @@ let load t ~frag path =
     done;%lwt
     Lwt.return (List.rev !eventlists)
   in
+  let module String_set = Set.Make (String) in
+  let source_dirs = ref String_set.empty in
   let%lwt ic = Lwt_io.open_file ~mode:Lwt_io.input path in
   (let%lwt toc = read_toc ic in
    let%lwt eventlists = read_eventlists toc ic in
@@ -203,7 +213,10 @@ let load t ~frag path =
                      Lwt.return ()
                  | None -> Lwt.return () );%lwt
                  Lwt.return ())))
-    [%finally Lwt_io.close ic]
+    [%finally Lwt_io.close ic];%lwt
+  t.version <- t.version + 1;
+  t.source_dirs <- source_dirs.contents |> String_set.to_seq |> List.of_seq;
+  Lwt.return ()
 
 let find_module t id = Hashtbl.find t.module_by_id id
 

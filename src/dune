@@ -3,4 +3,4 @@
  (public_name ocaml_debug_agent)
  (preprocess
   (pps lwt_ppx ppx_deriving.show ppx_deriving.make))
- (libraries compiler-libs.bytecomp lwt lwt.unix lwt_react lru logs logs.lwt))
+ (libraries compiler-libs.bytecomp lwt lwt.unix lwt_react lru logs logs.lwt iter))

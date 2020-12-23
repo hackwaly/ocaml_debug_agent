@@ -167,7 +167,7 @@ let start agent =
   in
   let execute =
     let temporary_trap_barrier_and_breakpoint = ref None in
-    let check_meet_temporary_trap_barrier_and_breakpoint report =
+    let check_met_temporary_trap_barrier_and_breakpoint report =
       match temporary_trap_barrier_and_breakpoint.contents with
       | None -> false
       | Some (stack_pos, pc) ->
@@ -179,10 +179,10 @@ let start agent =
       sync ();%lwt
       match report.rep_type with
       | Breakpoint ->
-          let meet_temporary_trap_barrier_and_breakpoint =
-            check_meet_temporary_trap_barrier_and_breakpoint report
+          let met_temporary_trap_barrier_and_breakpoint =
+            check_met_temporary_trap_barrier_and_breakpoint report
           in
-          if meet_temporary_trap_barrier_and_breakpoint then
+          if met_temporary_trap_barrier_and_breakpoint then
             Lwt.return (Some (Stopped { breakpoint = false }))
           else
             if%lwt
@@ -195,10 +195,10 @@ let start agent =
           match temporary_trap_barrier_and_breakpoint.contents with
           | None -> [%lwt assert false]
           | Some _ ->
-              let meet_temporary_trap_barrier_and_breakpoint =
-                check_meet_temporary_trap_barrier_and_breakpoint report
+              let met_temporary_trap_barrier_and_breakpoint =
+                check_met_temporary_trap_barrier_and_breakpoint report
               in
-              if meet_temporary_trap_barrier_and_breakpoint then
+              if met_temporary_trap_barrier_and_breakpoint then
                 Lwt.return (Some (Stopped { breakpoint = false }))
               else Lwt.return None )
       | _ -> Lwt.return None
@@ -294,13 +294,13 @@ let start agent =
       let ev1 = Symbols.find_event agent.symbols pc1 in
       let ev2 = Symbols.find_event agent.symbols pc2 in
       let%lwt r3 = Rdbg.up_frame conn ev2.ev_stacksize in
+      (* tailcallopt case *)
       let is_tco () =
         if r3 |> Option.is_some then
           let stack_pos3, pc3 = r3 |> Option.get in
           not (stack_pos3 = stack_pos1 && pc3 = pc1)
         else true
       in
-      (* fail on tailcallopt case *)
       let is_entered () =
         stack_pos2 - ev2.ev_stacksize > stack_pos1 - ev1.ev_stacksize
       in

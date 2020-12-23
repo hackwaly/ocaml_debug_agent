@@ -15,6 +15,10 @@ type t
 
 val create : unit -> t
 
+val version : t -> int
+
+val source_dirs : t -> string list
+
 val commit : t -> (module Remote_debugger.S) -> conn -> unit Lwt.t
 
 val load : t -> frag:int -> string -> unit Lwt.t
