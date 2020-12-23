@@ -10,17 +10,9 @@ type value =
   | Scope of scope
   | Unknown
 
-type key = Indexed of int | Named of string
-
 type t
 
-type path = {
-  scene_id : int64;  (** Equals to [report.rep_event_count] *)
-  scope : scope;
-  keys : key list;
-}
-
-type obj = { path : path; value : value; name : string }
+type obj = { scene_id : int64; value : value; name : string }
 
 type ident = Ident of string | Qualified of string * ident
 
@@ -32,6 +24,8 @@ val create :
   conn:Remote_debugger.conn ->
   unit ->
   t
+
+val is_valid : t -> obj -> bool
 
 val update_scene : t -> Remote_debugger.report -> unit
 

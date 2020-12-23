@@ -12,15 +12,7 @@ type value =
   | Scope of scope
   | Unknown
 
-type key = Indexed of int | Named of string
-
-type path = {
-  scene_id : int64;  (** Equals to [report.rep_event_count] *)
-  scope : scope;
-  keys : key list;
-}
-
-type obj = { path : path; value : value; name : string }
+type obj = { scene_id : int64; value : value; name : string }
 
 type ident = Ident of string | Qualified of string * ident
 
@@ -102,7 +94,7 @@ let list_local t =
     let%lwt value = make_value t rv ty in
     let obj =
       {
-        path = { scene_id = scene.id; scope = Local; keys = [ Indexed index ] };
+        scene_id = scene.id;
         value;
         name = Ident.name id;
       }
@@ -115,12 +107,17 @@ let list_local t =
   in
   Lwt.return objs
 
+let is_valid t obj =
+  match t.scene with
+  | Some scene -> scene.id = obj.scene_id
+  | None -> false
+
 let scope_obj t scope =
   let scene = t.scene |> Option.get in
   ignore t;
   let obj =
     {
-      path = { scene_id = scene.id; scope; keys = [] };
+      scene_id = scene.id;
       value = Scope scope;
       name = scope_name scope;
     }
@@ -128,6 +125,5 @@ let scope_obj t scope =
   Lwt.return obj
 
 let list_obj t obj =
-  let scene = t.scene |> Option.get in
-  [%lwt assert (obj.path.scene_id = scene.id)];%lwt
+  [%lwt assert (is_valid t obj)];%lwt
   match obj.value with Scope Local -> list_local t | _ -> [%lwt assert false]
